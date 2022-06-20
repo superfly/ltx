@@ -18,7 +18,7 @@ const (
 
 // Header size constants.
 const (
-	HeaderFrameSize      = 76
+	HeaderSize           = 76
 	PageFrameHeaderSize  = 32
 	EventFrameHeaderSize = 32
 )
@@ -27,7 +27,7 @@ const (
 const (
 	ChecksumSize = 8
 
-	HeaderBlockChecksumOffset = HeaderFrameSize - ChecksumSize - ChecksumSize
+	HeaderBlockChecksumOffset = HeaderSize - ChecksumSize - ChecksumSize
 	PageBlockChecksumOffset   = HeaderBlockChecksumOffset + ChecksumSize
 )
 
@@ -43,7 +43,7 @@ var (
 
 // internal reader/writer states
 const (
-	stateHeaderFrame = "header frame"
+	stateHeader      = "header"
 	stateEventHeader = "event header"
 	stateEventData   = "event data"
 	statePageHeader  = "page header"
@@ -52,8 +52,8 @@ const (
 	stateClosed      = "closed"
 )
 
-// HeaderFrame represents the header frame of an LTX file.
-type HeaderFrame struct {
+// Header represents the header frame of an LTX file.
+type Header struct {
 	Version             int    // based on magic
 	Flags               uint32 // reserved flags
 	PageSize            uint32 // page size, in bytes
@@ -72,21 +72,21 @@ type HeaderFrame struct {
 // IsSnapshot returns true if header represents a complete database snapshot.
 // This is true if the header includes the initial transaction. Snapshots must
 // include all pages in the database.
-func (h *HeaderFrame) IsSnapshot() bool {
+func (h *Header) IsSnapshot() bool {
 	return h.MinTXID == 1
 }
 
 // HeaderBlockSize returns the total size of the header block, in bytes.
 // Must be a valid header frame.
-func (h *HeaderFrame) HeaderBlockSize() int64 {
-	sz := HeaderFrameSize +
+func (h *Header) HeaderBlockSize() int64 {
+	sz := HeaderSize +
 		(int64(h.PageFrameN) * PageFrameHeaderSize) +
 		(int64(h.EventFrameN) * EventFrameHeaderSize) + int64(h.EventDataSize)
 	return PageAlign(sz, h.PageSize)
 }
 
 // Validate returns an error if h is invalid.
-func (h *HeaderFrame) Validate() error {
+func (h *Header) Validate() error {
 	if h.Version != Version {
 		return fmt.Errorf("invalid version")
 	} else if !IsValidHeaderFlags(h.Flags) {
@@ -116,8 +116,8 @@ func (h *HeaderFrame) Validate() error {
 }
 
 // MarshalBinary encodes h to a byte slice.
-func (h *HeaderFrame) MarshalBinary() ([]byte, error) {
-	b := make([]byte, HeaderFrameSize)
+func (h *Header) MarshalBinary() ([]byte, error) {
+	b := make([]byte, HeaderSize)
 	copy(b[0:4], Magic)
 	binary.BigEndian.PutUint32(b[4:], h.Flags)
 	binary.BigEndian.PutUint32(b[8:], h.PageSize)
@@ -135,8 +135,8 @@ func (h *HeaderFrame) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary decodes h from a byte slice.
-func (h *HeaderFrame) UnmarshalBinary(b []byte) error {
-	if len(b) < HeaderFrameSize {
+func (h *Header) UnmarshalBinary(b []byte) error {
+	if len(b) < HeaderSize {
 		return io.ErrShortBuffer
 	} else if string(b[0:4]) != Magic {
 		return ErrInvalidFile

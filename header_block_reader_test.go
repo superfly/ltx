@@ -13,7 +13,7 @@ import (
 func TestHeaderBlockReader(t *testing.T) {
 	t.Run("EventAndPageData", func(t *testing.T) {
 		spec := &ltx.FileSpec{
-			Header: ltx.HeaderFrame{
+			Header: ltx.Header{
 				Version:       1,
 				PageSize:      1024,
 				EventFrameN:   1,
@@ -61,8 +61,8 @@ func TestHeaderBlockReader(t *testing.T) {
 		r := ltx.NewHeaderBlockReader(openFile(t, filename))
 
 		// Verify header.
-		var hdr ltx.HeaderFrame
-		if err := r.ReadHeaderFrame(&hdr); err != nil {
+		var hdr ltx.Header
+		if err := r.ReadHeader(&hdr); err != nil {
 			t.Fatal(err)
 		} else if got, want := hdr, spec.Header; !reflect.DeepEqual(got, want) {
 			t.Fatalf("header mismatch:\ngot=%#v\nwant=%#v", got, want)

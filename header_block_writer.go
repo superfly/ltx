@@ -12,7 +12,7 @@ type HeaderBlockWriter struct {
 	w     io.WriteSeeker
 	state string
 
-	hdr  HeaderFrame
+	hdr  Header
 	hash hash.Hash64
 	n    int // bytes written
 
@@ -30,7 +30,7 @@ type HeaderBlockWriter struct {
 func NewHeaderBlockWriter(w io.WriteSeeker) *HeaderBlockWriter {
 	return &HeaderBlockWriter{
 		w:     w,
-		state: stateHeaderFrame,
+		state: stateHeader,
 	}
 }
 
@@ -70,11 +70,11 @@ func (w *HeaderBlockWriter) Close() error {
 	return nil
 }
 
-// WriteHeaderFrame writes hdr to the file's header block.
-func (w *HeaderBlockWriter) WriteHeaderFrame(hdr HeaderFrame) error {
+// WriteHeader writes hdr to the file's header block.
+func (w *HeaderBlockWriter) WriteHeader(hdr Header) error {
 	if w.state == stateClosed {
 		return ErrWriterClosed
-	} else if w.state != stateHeaderFrame {
+	} else if w.state != stateHeader {
 		return fmt.Errorf("cannot write header frame, expected %s", w.state)
 	} else if err := hdr.Validate(); err != nil {
 		return err

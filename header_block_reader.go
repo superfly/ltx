@@ -11,7 +11,7 @@ type HeaderBlockReader struct {
 	r  io.Reader
 	lr io.LimitedReader
 
-	hdr   HeaderFrame
+	hdr   Header
 	state string
 
 	hash hash.Hash64
@@ -26,7 +26,7 @@ func NewHeaderBlockReader(r io.Reader) *HeaderBlockReader {
 	return &HeaderBlockReader{
 		r:     r,
 		lr:    io.LimitedReader{R: r, N: 0},
-		state: stateHeaderFrame,
+		state: stateHeader,
 		hash:  crc64.New(crc64.MakeTable(crc64.ISO)),
 	}
 }
@@ -55,9 +55,9 @@ func (r *HeaderBlockReader) Close() error {
 	return nil
 }
 
-// ReadHeaderFrame returns the LTX file header frame.
-func (r *HeaderBlockReader) ReadHeaderFrame(hdr *HeaderFrame) error {
-	b := make([]byte, HeaderFrameSize)
+// ReadHeader returns the LTX file header frame.
+func (r *HeaderBlockReader) ReadHeader(hdr *Header) error {
+	b := make([]byte, HeaderSize)
 	if _, err := io.ReadFull(r.r, b); err != nil {
 		return err
 	} else if err := hdr.UnmarshalBinary(b); err != nil {

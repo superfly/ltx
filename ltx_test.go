@@ -14,79 +14,79 @@ import (
 
 func TestHeader_Validate(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 2, DBID: 1, MinTXID: 3, MaxTXID: 4}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 2, DBID: 1, MinTXID: 3, MaxTXID: 4}
 		if err := hdr.Validate(); err != nil {
 			t.Fatal(err)
 		}
 	})
 	t.Run("ErrVersion", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{}
+		hdr := ltx.Header{}
 		if err := hdr.Validate(); err == nil || err.Error() != `invalid version` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrFlags", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{Version: 1, Flags: 2}
+		hdr := ltx.Header{Version: 1, Flags: 2}
 		if err := hdr.Validate(); err == nil || err.Error() != `invalid flags: 0x00000002` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrInvalidPageSize", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{Version: 1, PageSize: 1000}
+		hdr := ltx.Header{Version: 1, PageSize: 1000}
 		if err := hdr.Validate(); err == nil || err.Error() != `invalid page size: 1000` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrPageCountRequired", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{Version: 1, PageSize: 1024}
+		hdr := ltx.Header{Version: 1, PageSize: 1024}
 		if err := hdr.Validate(); err == nil || err.Error() != `page count required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrCommitRecordRequired", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{Version: 1, PageSize: 1024, PageFrameN: 1}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1}
 		if err := hdr.Validate(); err == nil || err.Error() != `commit record required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrEventDataSizeRequired", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{Version: 1, PageSize: 1024, EventFrameN: 1, PageFrameN: 1, Commit: 1}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, EventFrameN: 1, PageFrameN: 1, Commit: 1}
 		if err := hdr.Validate(); err == nil || err.Error() != `event data size must be specified if event frames exist` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrEventFrameNRequired", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{Version: 1, PageSize: 1024, EventDataSize: 1, PageFrameN: 1, Commit: 1}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, EventDataSize: 1, PageFrameN: 1, Commit: 1}
 		if err := hdr.Validate(); err == nil || err.Error() != `event data size must be zero if no event frames exist` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrDBIDRequired", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 2}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 2}
 		if err := hdr.Validate(); err == nil || err.Error() != `database id required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrMinTXIDRequired", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 2, DBID: 1}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 2, DBID: 1}
 		if err := hdr.Validate(); err == nil || err.Error() != `minimum transaction id required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrMaxTXIDRequired", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 2, DBID: 1, MinTXID: 3}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 2, DBID: 1, MinTXID: 3}
 		if err := hdr.Validate(); err == nil || err.Error() != `maximum transaction id required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrTXIDOutOfOrderRequired", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 2, DBID: 1, MinTXID: 3, MaxTXID: 2}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 2, DBID: 1, MinTXID: 3, MaxTXID: 2}
 		if err := hdr.Validate(); err == nil || err.Error() != `transaction ids out of order: (3,2)` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrSnapshotPageCount", func(t *testing.T) {
-		hdr := ltx.HeaderFrame{Version: 1, PageSize: 1024, PageFrameN: 3, Commit: 4, DBID: 1, MinTXID: 1, MaxTXID: 3}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 3, Commit: 4, DBID: 1, MinTXID: 1, MaxTXID: 3}
 		if err := hdr.Validate(); err == nil || err.Error() != `snapshot page count 3 must equal commit size 4` {
 			t.Fatalf("unexpected error: %s", err)
 		}
@@ -94,7 +94,7 @@ func TestHeader_Validate(t *testing.T) {
 }
 
 func TestHeader_MarshalBinary(t *testing.T) {
-	hdr := ltx.HeaderFrame{
+	hdr := ltx.Header{
 		Version:             ltx.Version,
 		Flags:               0,
 		PageSize:            1024,
@@ -108,7 +108,7 @@ func TestHeader_MarshalBinary(t *testing.T) {
 		PageBlockChecksum:   11,
 	}
 
-	var other ltx.HeaderFrame
+	var other ltx.Header
 	if b, err := hdr.MarshalBinary(); err != nil {
 		t.Fatal(err)
 	} else if err := other.UnmarshalBinary(b); err != nil {
@@ -120,14 +120,14 @@ func TestHeader_MarshalBinary(t *testing.T) {
 
 func TestHeader_UnmarshalBinary(t *testing.T) {
 	t.Run("ErrShortBuffer", func(t *testing.T) {
-		var hdr ltx.HeaderFrame
+		var hdr ltx.Header
 		if err := hdr.UnmarshalBinary(make([]byte, 10)); err != io.ErrShortBuffer {
 			t.Fatal(err)
 		}
 	})
 	t.Run("ErrInvalidFile", func(t *testing.T) {
-		var hdr ltx.HeaderFrame
-		if err := hdr.UnmarshalBinary(make([]byte, ltx.HeaderFrameSize)); err != ltx.ErrInvalidFile {
+		var hdr ltx.Header
+		if err := hdr.UnmarshalBinary(make([]byte, ltx.HeaderSize)); err != ltx.ErrInvalidFile {
 			t.Fatal(err)
 		}
 	})

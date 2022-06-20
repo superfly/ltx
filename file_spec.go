@@ -9,7 +9,7 @@ import (
 
 // FileSpec is an in-memory representation of an LTX file. Typically used for testing.
 type FileSpec struct {
-	Header       HeaderFrame
+	Header       Header
 	PageHeaders  []PageFrameHeader
 	EventHeaders []EventFrameHeader
 	EventData    [][]byte
@@ -36,7 +36,7 @@ func (s *FileSpec) Bytes() ([]byte, error) {
 	}
 
 	hw := NewHeaderBlockWriter(&buf)
-	if err := hw.WriteHeaderFrame(s.Header); err != nil {
+	if err := hw.WriteHeader(s.Header); err != nil {
 		return nil, fmt.Errorf("write header: %s", err)
 	}
 
@@ -91,7 +91,7 @@ func (s *FileSpec) ReadFrom(r io.Reader) (n int, err error) {
 	hr := NewHeaderBlockReader(r)
 
 	// Read header frame and initialize spec slices to correct size.
-	if err := hr.ReadHeaderFrame(&s.Header); err != nil {
+	if err := hr.ReadHeader(&s.Header); err != nil {
 		return 0, fmt.Errorf("read header: %s", err)
 	}
 

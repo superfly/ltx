@@ -83,7 +83,7 @@ func (c *Compactor) writeToOutputFile(inputFiles []*compactionInputFile, filenam
 	defer func() { _ = os.Remove(tempFilename) }()
 
 	// Generate output header frame.
-	hdr := HeaderFrame{
+	hdr := Header{
 		Version:    Version,
 		PageSize:   inputFiles[0].hdr.PageSize,
 		PageFrameN: pageFrameN,
@@ -123,7 +123,7 @@ func (c *Compactor) writeToOutputFile(inputFiles []*compactionInputFile, filenam
 	pbw := NewPageBlockWriter(pbf, hdr.PageFrameN, hdr.PageSize)
 
 	// Write output header.
-	if err := hbw.WriteHeaderFrame(hdr); err != nil {
+	if err := hbw.WriteHeader(hdr); err != nil {
 		return fmt.Errorf("write header frame: %w", err)
 	}
 
@@ -206,7 +206,7 @@ func (c *Compactor) openInputFiles(filenames []string) (_ []*compactionInputFile
 		inputFile.hbr = NewHeaderBlockReader(inputFile.hbf)
 
 		// Read header.
-		if err := inputFile.hbr.ReadHeaderFrame(&inputFile.hdr); err != nil {
+		if err := inputFile.hbr.ReadHeader(&inputFile.hdr); err != nil {
 			_ = inputFile.Close()
 			return nil, fmt.Errorf("read header frame on %s: %w", inputFile.filename, err)
 		}
@@ -335,7 +335,7 @@ func (c *Compactor) writeEventFrames(hbw *HeaderBlockWriter, inputFiles []*compa
 
 type compactionInputFile struct {
 	filename string
-	hdr      HeaderFrame
+	hdr      Header
 
 	hbf *os.File
 	hbr *HeaderBlockReader
@@ -380,8 +380,8 @@ func UniquePageFrameN(filenames []string) (pageFrameN uint32, err error) {
 		defer f.Close()
 		inputs[i].r = NewHeaderBlockReader(f)
 
-		var hdr HeaderFrame
-		if err := inputs[i].r.ReadHeaderFrame(&hdr); err != nil {
+		var hdr Header
+		if err := inputs[i].r.ReadHeader(&hdr); err != nil {
 			return 0, fmt.Errorf("read header frame %d: %w", i, err)
 		}
 		inputs[i].n = hdr.PageFrameN
