@@ -13,7 +13,7 @@ type Compactor struct {
 	// If true, the compactor calls fsync() after a successful compaction.
 	Sync bool
 
-	// If true, the output file will include all event frames from input files.
+	// If true, the output file will include all events from input files.
 	IncludeEvents bool
 }
 
@@ -82,7 +82,7 @@ func (c *Compactor) writeToOutputFile(inputFiles []*compactionInputFile, filenam
 	tempFilename := filename + ".tmp"
 	defer func() { _ = os.Remove(tempFilename) }()
 
-	// Generate output header frame.
+	// Generate output header.
 	hdr := Header{
 		Version:   Version,
 		PageSize:  inputFiles[0].hdr.PageSize,
@@ -97,7 +97,7 @@ func (c *Compactor) writeToOutputFile(inputFiles []*compactionInputFile, filenam
 	// Determine event info if events are included in the output file.
 	if c.IncludeEvents {
 		for _, inputFile := range inputFiles {
-			hdr.EventFrameN += inputFile.hdr.EventFrameN
+			hdr.EventN += inputFile.hdr.EventN
 			hdr.EventDataSize += inputFile.hdr.EventDataSize
 		}
 	}
@@ -133,10 +133,10 @@ func (c *Compactor) writeToOutputFile(inputFiles []*compactionInputFile, filenam
 	}
 	hbw.SetPageBlockChecksum(pbw.Checksum())
 
-	// Write event frames.
-	if hdr.EventFrameN > 0 {
-		if err := c.writeEventFrames(hbw, inputFiles); err != nil {
-			return fmt.Errorf("write event frames: %w", err)
+	// Write events.
+	if hdr.EventN > 0 {
+		if err := c.writeEvents(hbw, inputFiles); err != nil {
+			return fmt.Errorf("write events: %w", err)
 		}
 	}
 
@@ -315,10 +315,10 @@ func (c *Compactor) writePages(hbw *HeaderBlockWriter, pbw *PageBlockWriter, inp
 	return nil
 }
 
-func (c *Compactor) writeEventFrames(hbw *HeaderBlockWriter, inputFiles []*compactionInputFile) error {
+func (c *Compactor) writeEvents(hbw *HeaderBlockWriter, inputFiles []*compactionInputFile) error {
 	for _, inputFile := range inputFiles {
-		for i := uint32(0); i < inputFile.hdr.EventFrameN; i++ {
-			var hdr EventFrameHeader
+		for i := uint32(0); i < inputFile.hdr.EventN; i++ {
+			var hdr EventHeader
 			if err := inputFile.hbr.ReadEventHeader(&hdr); err != nil {
 				return fmt.Errorf("read event header from %s: %w", inputFile.filename, err)
 			} else if err := hbw.WriteEventHeader(hdr); err != nil {
@@ -364,7 +364,7 @@ func (f *compactionInputFile) Close() (err error) {
 }
 
 // UniquePageN returns the unique page number count of a set of LTX files.
-func UniquePageN(filenames []string) (pageFrameN uint32, err error) {
+func UniquePageN(filenames []string) (pageN uint32, err error) {
 	inputs := make([]struct {
 		r   *HeaderBlockReader
 		n   uint32
@@ -382,7 +382,7 @@ func UniquePageN(filenames []string) (pageFrameN uint32, err error) {
 
 		var hdr Header
 		if err := inputs[i].r.ReadHeader(&hdr); err != nil {
-			return 0, fmt.Errorf("read header frame %d: %w", i, err)
+			return 0, fmt.Errorf("read header %d: %w", i, err)
 		}
 		inputs[i].n = hdr.PageN
 	}
@@ -415,7 +415,7 @@ func UniquePageN(filenames []string) (pageFrameN uint32, err error) {
 
 		// Exit when no more headers exist.
 		if pgno == 0 {
-			return pageFrameN, nil
+			return pageN, nil
 		}
 
 		// Clear buffers with matching page number.
@@ -426,6 +426,6 @@ func UniquePageN(filenames []string) (pageFrameN uint32, err error) {
 		}
 
 		// Increment total page count.
-		pageFrameN++
+		pageN++
 	}
 }

@@ -64,7 +64,7 @@ func TestHeaderBlockWriter(t *testing.T) {
 		if err := w.WriteHeader(ltx.Header{
 			Version:       1,
 			PageSize:      1024,
-			EventFrameN:   1,
+			EventN:        1,
 			PageN:         2,
 			Commit:        4000,
 			EventDataSize: 60,
@@ -94,7 +94,7 @@ func TestHeaderBlockWriter(t *testing.T) {
 		}
 
 		// Write event header.
-		if err := w.WriteEventHeader(ltx.EventFrameHeader{
+		if err := w.WriteEventHeader(ltx.EventHeader{
 			Size:  60,
 			Nonce: [12]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11},
 			Tag:   [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12},
@@ -203,7 +203,7 @@ func TestHeaderBlockWriter_Close(t *testing.T) {
 			t.Fatal(err)
 		} else if err := w.WritePageHeader(ltx.PageHeader{}); err != ltx.ErrWriterClosed {
 			t.Fatal(err)
-		} else if err := w.WriteEventHeader(ltx.EventFrameHeader{}); err != ltx.ErrWriterClosed {
+		} else if err := w.WriteEventHeader(ltx.EventHeader{}); err != ltx.ErrWriterClosed {
 			t.Fatal(err)
 		} else if _, err := w.Write(nil); err != ltx.ErrWriterClosed {
 			t.Fatal(err)
@@ -246,18 +246,18 @@ func TestHeaderBlockWriter_WriteHeader(t *testing.T) {
 func TestHeaderBlockWriter_WriteEventHeader(t *testing.T) {
 	t.Run("ErrInvalidState", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WriteEventHeader(ltx.EventFrameHeader{}); err == nil || err.Error() != `cannot write event header, expected header` {
+		if err := w.WriteEventHeader(ltx.EventHeader{}); err == nil || err.Error() != `cannot write event header, expected header` {
 			t.Fatal(err)
 		}
 	})
 
 	t.Run("ErrSizeRequired", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, EventFrameN: 1, PageN: 1, Commit: 1, EventDataSize: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, EventN: 1, PageN: 1, Commit: 1, EventDataSize: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
 		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WriteEventHeader(ltx.EventFrameHeader{Size: 0}); err == nil || err.Error() != `size required` {
+		} else if err := w.WriteEventHeader(ltx.EventHeader{Size: 0}); err == nil || err.Error() != `size required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
@@ -331,11 +331,11 @@ func TestHeaderBlockWriter_WriteEventData(t *testing.T) {
 
 	t.Run("ErrSizeMismatch", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, EventFrameN: 1, PageN: 1, Commit: 1, EventDataSize: 10, DBID: 1, MinTXID: 2, MaxTXID: 2}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, EventN: 1, PageN: 1, Commit: 1, EventDataSize: 10, DBID: 1, MinTXID: 2, MaxTXID: 2}); err != nil {
 			t.Fatal(err)
 		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WriteEventHeader(ltx.EventFrameHeader{Size: 10}); err != nil {
+		} else if err := w.WriteEventHeader(ltx.EventHeader{Size: 10}); err != nil {
 			t.Fatal(err)
 		} else if _, err := w.Write(make([]byte, 15)); err == nil || err.Error() != `total event data size of 15 bytes exceeds size specified in header of 10 bytes` {
 			t.Fatalf("unexpected error: %s", err)

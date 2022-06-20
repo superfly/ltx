@@ -18,9 +18,9 @@ const (
 
 // Header size constants.
 const (
-	HeaderSize           = 76
-	PageHeaderSize       = 32
-	EventFrameHeaderSize = 32
+	HeaderSize      = 76
+	PageHeaderSize  = 32
+	EventHeaderSize = 32
 )
 
 // Checksum size & positions.
@@ -58,7 +58,7 @@ type Header struct {
 	Flags               uint32 // reserved flags
 	PageSize            uint32 // page size, in bytes
 	PageN               uint32 // page count in ltx file
-	EventFrameN         uint32 // event frame count in ltx file
+	EventN              uint32 // event count in ltx file
 	EventDataSize       uint32 // total size of all event data
 	Commit              uint32 // db size after transaction, in pages
 	DBID                uint64 // database ID
@@ -81,7 +81,7 @@ func (h *Header) IsSnapshot() bool {
 func (h *Header) HeaderBlockSize() int64 {
 	sz := HeaderSize +
 		(int64(h.PageN) * PageHeaderSize) +
-		(int64(h.EventFrameN) * EventFrameHeaderSize) + int64(h.EventDataSize)
+		(int64(h.EventN) * EventHeaderSize) + int64(h.EventDataSize)
 	return PageAlign(sz, h.PageSize)
 }
 
@@ -97,10 +97,10 @@ func (h *Header) Validate() error {
 		return fmt.Errorf("page count required")
 	} else if h.Commit == 0 {
 		return fmt.Errorf("commit record required")
-	} else if h.EventFrameN == 0 && h.EventDataSize != 0 {
-		return fmt.Errorf("event data size must be zero if no event frames exist")
-	} else if h.EventFrameN != 0 && h.EventDataSize == 0 {
-		return fmt.Errorf("event data size must be specified if event frames exist")
+	} else if h.EventN == 0 && h.EventDataSize != 0 {
+		return fmt.Errorf("event data size must be zero if no events exist")
+	} else if h.EventN != 0 && h.EventDataSize == 0 {
+		return fmt.Errorf("event data size must be specified if events exist")
 	} else if h.DBID == 0 {
 		return fmt.Errorf("database id required")
 	} else if h.MinTXID == 0 {
@@ -122,7 +122,7 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint32(b[4:], h.Flags)
 	binary.BigEndian.PutUint32(b[8:], h.PageSize)
 	binary.BigEndian.PutUint32(b[12:], h.PageN)
-	binary.BigEndian.PutUint32(b[16:], h.EventFrameN)
+	binary.BigEndian.PutUint32(b[16:], h.EventN)
 	binary.BigEndian.PutUint32(b[20:], h.EventDataSize)
 	binary.BigEndian.PutUint32(b[24:], h.Commit)
 	binary.BigEndian.PutUint64(b[28:], h.DBID)
@@ -146,7 +146,7 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.Flags = binary.BigEndian.Uint32(b[4:])
 	h.PageSize = binary.BigEndian.Uint32(b[8:])
 	h.PageN = binary.BigEndian.Uint32(b[12:])
-	h.EventFrameN = binary.BigEndian.Uint32(b[16:])
+	h.EventN = binary.BigEndian.Uint32(b[16:])
 	h.EventDataSize = binary.BigEndian.Uint32(b[20:])
 	h.Commit = binary.BigEndian.Uint32(b[24:])
 	h.DBID = binary.BigEndian.Uint64(b[28:])
@@ -174,15 +174,15 @@ func IsValidPageSize(sz uint32) bool {
 	return false
 }
 
-// EventFrameHeader represents the header for a single event frame in an LTX file.
-type EventFrameHeader struct {
+// EventHeader represents the header for a single event frame in an LTX file.
+type EventHeader struct {
 	Size  uint32
 	Nonce [12]byte
 	Tag   [16]byte
 }
 
 // Validate returns an error if h is invalid.
-func (h *EventFrameHeader) Validate() error {
+func (h *EventHeader) Validate() error {
 	if h.Size == 0 {
 		return fmt.Errorf("size required")
 	}
@@ -190,8 +190,8 @@ func (h *EventFrameHeader) Validate() error {
 }
 
 // MarshalBinary encodes h to a byte slice.
-func (h *EventFrameHeader) MarshalBinary() ([]byte, error) {
-	b := make([]byte, EventFrameHeaderSize)
+func (h *EventHeader) MarshalBinary() ([]byte, error) {
+	b := make([]byte, EventHeaderSize)
 	binary.BigEndian.PutUint32(b[0:], h.Size)
 	copy(b[4:], h.Nonce[:])
 	copy(b[16:], h.Tag[:])
@@ -199,8 +199,8 @@ func (h *EventFrameHeader) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary decodes h from a byte slice.
-func (h *EventFrameHeader) UnmarshalBinary(b []byte) error {
-	if len(b) < EventFrameHeaderSize {
+func (h *EventHeader) UnmarshalBinary(b []byte) error {
+	if len(b) < EventHeaderSize {
 		return io.ErrShortBuffer
 	}
 

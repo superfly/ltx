@@ -42,7 +42,7 @@ check.
 | 0      | 4    | Magic number. Always "LTX1".            |
 | 4      | 4    | Flags. Reserved. Always 0.              |
 | 8      | 4    | Page size, in bytes.                    |
-| 12     | 4    | Event frame count.                      |
+| 12     | 4    | Event count.                            |
 | 16     | 4    | Total event data size.                  |
 | 20     | 4    | Page count.                             |
 | 24     | 4    | Size of DB after transaction, in pages. |

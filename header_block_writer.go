@@ -20,10 +20,10 @@ type HeaderBlockWriter struct {
 	prevPgno           uint32
 	pageHeadersWritten uint32
 
-	eventHdr               EventFrameHeader
-	eventFramesWritten     uint32
-	eventBytesTotal        int64
-	eventFrameBytesWritten int64
+	eventHdr          EventHeader
+	eventsWritten     uint32
+	eventBytesTotal   int64
+	eventBytesWritten int64
 }
 
 // NewHeaderBlockWriter returns a new instance of HeaderBlockWriter.
@@ -147,7 +147,7 @@ func (w *HeaderBlockWriter) WritePageHeader(hdr PageHeader) (err error) {
 	}
 
 	// Move to writing events if the are specified in the header.
-	if w.hdr.EventFrameN > 0 {
+	if w.hdr.EventN > 0 {
 		w.state = stateEventHeader
 		return nil
 	}
@@ -160,8 +160,8 @@ func (w *HeaderBlockWriter) WritePageHeader(hdr PageHeader) (err error) {
 	return nil
 }
 
-// WriteEventHeader writes hdr to the file's event frame.
-func (w *HeaderBlockWriter) WriteEventHeader(hdr EventFrameHeader) (err error) {
+// WriteEventHeader writes hdr to the file's event block.
+func (w *HeaderBlockWriter) WriteEventHeader(hdr EventHeader) (err error) {
 	if w.state == stateClosed {
 		return ErrWriterClosed
 	} else if w.state != stateEventHeader {
@@ -174,7 +174,7 @@ func (w *HeaderBlockWriter) WriteEventHeader(hdr EventFrameHeader) (err error) {
 	// total event data size on the last written frame.
 	if total := w.eventBytesTotal + int64(hdr.Size); total > int64(w.hdr.EventDataSize) {
 		return fmt.Errorf("total event data size of %d bytes exceeds header event data size of %d bytes", total, w.hdr.EventDataSize)
-	} else if w.eventFramesWritten+1 == w.hdr.EventFrameN && total != int64(w.hdr.EventDataSize) { // last frame only
+	} else if w.eventsWritten+1 == w.hdr.EventN && total != int64(w.hdr.EventDataSize) { // last frame only
 		return fmt.Errorf("total event data size of %d bytes does not match header event data size of %d bytes", total, w.hdr.EventDataSize)
 	}
 
@@ -191,19 +191,19 @@ func (w *HeaderBlockWriter) WriteEventHeader(hdr EventFrameHeader) (err error) {
 	w.state = stateEventData
 	w.eventHdr = hdr
 	w.eventBytesTotal += int64(hdr.Size)
-	w.eventFrameBytesWritten = 0
+	w.eventBytesWritten = 0
 
 	return nil
 }
 
-// Write writes data to a single event frame. Should only be called after a
+// Write writes data to a single event. Should only be called after a
 // successful call to WriteEventHeader().
 func (w *HeaderBlockWriter) Write(p []byte) (n int, err error) {
 	if w.state == stateClosed {
 		return n, ErrWriterClosed
 	} else if w.state != stateEventData {
 		return n, fmt.Errorf("cannot write event data, expected %s", w.state)
-	} else if total := w.eventFrameBytesWritten + int64(len(p)); total > int64(w.eventHdr.Size) {
+	} else if total := w.eventBytesWritten + int64(len(p)); total > int64(w.eventHdr.Size) {
 		return n, fmt.Errorf("total event data size of %d bytes exceeds size specified in header of %d bytes", total, w.eventHdr.Size)
 	}
 
@@ -213,19 +213,19 @@ func (w *HeaderBlockWriter) Write(p []byte) (n int, err error) {
 	w.n += n
 
 	// Return if there are still bytes remaining in frame.
-	w.eventFrameBytesWritten += int64(n)
-	if w.eventFrameBytesWritten < int64(w.eventHdr.Size) {
+	w.eventBytesWritten += int64(n)
+	if w.eventBytesWritten < int64(w.eventHdr.Size) {
 		return n, err
 	}
 
-	// Mark frame as complete if we have written all the bytes.
-	w.eventFramesWritten++
-	if w.eventFramesWritten < w.hdr.EventFrameN {
-		w.state = stateEventHeader // move to next event frame
+	// Mark as complete if we have written all the bytes.
+	w.eventsWritten++
+	if w.eventsWritten < w.hdr.EventN {
+		w.state = stateEventHeader // move to next event
 		return n, err
 	}
 
-	// If we have written all event frames, move state and write padding bytes.
+	// If we have written all events, move state and write padding bytes.
 	w.state = stateClose
 	if err := w.writePadding(); err != nil {
 		return n, fmt.Errorf("cannot write header block padding after event data: %w", err)

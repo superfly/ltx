@@ -154,7 +154,7 @@ func TestCompactor_Compact(t *testing.T) {
 				Version:       1,
 				PageSize:      512,
 				PageN:         1,
-				EventFrameN:   1,
+				EventN:        1,
 				EventDataSize: 60,
 				Commit:        1,
 				DBID:          1,
@@ -169,7 +169,7 @@ func TestCompactor_Compact(t *testing.T) {
 			PageData: [][]byte{
 				bytes.Repeat([]byte{0x81}, 512),
 			},
-			EventHeaders: []ltx.EventFrameHeader{{
+			EventHeaders: []ltx.EventHeader{{
 				Size:  60,
 				Nonce: [12]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7},
 				Tag:   [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8},
@@ -193,14 +193,14 @@ func TestCompactor_Compact(t *testing.T) {
 	t.Run("MultiFileWithPageAndEventData", func(t *testing.T) {
 		spec, err := compactFileSpecs(t, ltx.NewCompactor(),
 			&ltx.FileSpec{
-				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 1, EventFrameN: 2, EventDataSize: 130, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000},
+				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 1, EventN: 2, EventDataSize: 130, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000},
 				PageHeaders: []ltx.PageHeader{
 					{Pgno: 1},
 				},
 				PageData: [][]byte{
 					bytes.Repeat([]byte{0x81}, 1024),
 				},
-				EventHeaders: []ltx.EventFrameHeader{
+				EventHeaders: []ltx.EventHeader{
 					{Size: 60},
 					{Size: 70},
 				},
@@ -219,14 +219,14 @@ func TestCompactor_Compact(t *testing.T) {
 				},
 			},
 			&ltx.FileSpec{
-				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 1, EventFrameN: 1, EventDataSize: 80, Commit: 1, DBID: 1, MinTXID: 3, MaxTXID: 3, Timestamp: 3000},
+				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 1, EventN: 1, EventDataSize: 80, Commit: 1, DBID: 1, MinTXID: 3, MaxTXID: 3, Timestamp: 3000},
 				PageHeaders: []ltx.PageHeader{
 					{Pgno: 1},
 				},
 				PageData: [][]byte{
 					bytes.Repeat([]byte{0xa1}, 1024),
 				},
-				EventHeaders: []ltx.EventFrameHeader{
+				EventHeaders: []ltx.EventHeader{
 					{Size: 80},
 				},
 				EventData: [][]byte{
@@ -239,14 +239,14 @@ func TestCompactor_Compact(t *testing.T) {
 		}
 
 		assertFileSpecEqual(t, spec, &ltx.FileSpec{
-			Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 1, EventFrameN: 3, EventDataSize: 210, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 3, Timestamp: 1000},
+			Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 1, EventN: 3, EventDataSize: 210, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 3, Timestamp: 1000},
 			PageHeaders: []ltx.PageHeader{
 				{Pgno: 1},
 			},
 			PageData: [][]byte{
 				bytes.Repeat([]byte{0xa1}, 1024),
 			},
-			EventHeaders: []ltx.EventFrameHeader{
+			EventHeaders: []ltx.EventHeader{
 				{Size: 60},
 				{Size: 70},
 				{Size: 80},

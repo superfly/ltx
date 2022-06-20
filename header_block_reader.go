@@ -94,7 +94,7 @@ func (r *HeaderBlockReader) ReadPageHeader(hdr *PageHeader) error {
 
 	r.pageHeadersRead++
 	if r.pageHeadersRead == r.hdr.PageN {
-		if r.hdr.EventFrameN > 0 {
+		if r.hdr.EventN > 0 {
 			r.state = stateEventHeader
 		} else {
 			r.state = stateClose
@@ -114,15 +114,15 @@ func (r *HeaderBlockReader) ReadPageHeader(hdr *PageHeader) error {
 	return nil
 }
 
-// ReadEventHeader returns true if more event frames are available.
-func (r *HeaderBlockReader) ReadEventHeader(hdr *EventFrameHeader) error {
+// ReadEventHeader returns true if more events are available.
+func (r *HeaderBlockReader) ReadEventHeader(hdr *EventHeader) error {
 	if r.state == stateClosed {
 		return ErrReaderClosed
 	} else if r.state != stateEventHeader && r.state != statePageData {
 		return fmt.Errorf("cannot read event header, expected %s", r.state)
 	}
 
-	b := make([]byte, EventFrameHeaderSize)
+	b := make([]byte, EventHeaderSize)
 	if _, err := io.ReadFull(r.r, b); err != nil {
 		return err
 	} else if err := hdr.UnmarshalBinary(b); err != nil {
@@ -162,7 +162,7 @@ func (r *HeaderBlockReader) Read(p []byte) (n int, err error) {
 
 	// More events to read, move state back to event header.
 	r.eventDataRead++
-	if r.eventHeadersRead < r.hdr.EventFrameN {
+	if r.eventHeadersRead < r.hdr.EventN {
 		r.state = stateEventHeader
 		return n, nil
 	}

@@ -16,7 +16,7 @@ func TestHeaderBlockReader(t *testing.T) {
 			Header: ltx.Header{
 				Version:       1,
 				PageSize:      1024,
-				EventFrameN:   1,
+				EventN:        1,
 				PageN:         2,
 				Commit:        2,
 				EventDataSize: 60,
@@ -25,7 +25,7 @@ func TestHeaderBlockReader(t *testing.T) {
 				MaxTXID:       1,
 				Timestamp:     1000,
 			},
-			EventHeaders: []ltx.EventFrameHeader{
+			EventHeaders: []ltx.EventHeader{
 				{
 					Size:  60,
 					Nonce: [12]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11},
@@ -80,7 +80,7 @@ func TestHeaderBlockReader(t *testing.T) {
 
 		// Verify event data.
 		for i := range spec.EventHeaders {
-			var hdr ltx.EventFrameHeader
+			var hdr ltx.EventHeader
 			if err := r.ReadEventHeader(&hdr); err != nil {
 				t.Fatal(err)
 			} else if got, want := hdr, spec.EventHeaders[i]; got != want {

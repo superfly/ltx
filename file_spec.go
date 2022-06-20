@@ -11,7 +11,7 @@ import (
 type FileSpec struct {
 	Header       Header
 	PageHeaders  []PageHeader
-	EventHeaders []EventFrameHeader
+	EventHeaders []EventHeader
 	EventData    [][]byte
 	PageData     [][]byte
 }
@@ -98,9 +98,9 @@ func (s *FileSpec) ReadFrom(r io.Reader) (n int, err error) {
 	s.PageHeaders = make([]PageHeader, s.Header.PageN)
 	s.PageData = make([][]byte, s.Header.PageN)
 
-	if s.Header.EventFrameN > 0 {
-		s.EventHeaders = make([]EventFrameHeader, s.Header.EventFrameN)
-		s.EventData = make([][]byte, s.Header.EventFrameN)
+	if s.Header.EventN > 0 {
+		s.EventHeaders = make([]EventHeader, s.Header.EventN)
+		s.EventData = make([][]byte, s.Header.EventN)
 	}
 
 	// Read page headers.
@@ -111,7 +111,7 @@ func (s *FileSpec) ReadFrom(r io.Reader) (n int, err error) {
 		}
 	}
 
-	// Read event frames.
+	// Read events.
 	for i := range s.EventHeaders {
 		hdr := &s.EventHeaders[i]
 		if err := hr.ReadEventHeader(hdr); err != nil {

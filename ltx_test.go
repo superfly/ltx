@@ -50,14 +50,14 @@ func TestHeader_Validate(t *testing.T) {
 		}
 	})
 	t.Run("ErrEventDataSizeRequired", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, EventFrameN: 1, PageN: 1, Commit: 1}
-		if err := hdr.Validate(); err == nil || err.Error() != `event data size must be specified if event frames exist` {
+		hdr := ltx.Header{Version: 1, PageSize: 1024, EventN: 1, PageN: 1, Commit: 1}
+		if err := hdr.Validate(); err == nil || err.Error() != `event data size must be specified if events exist` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
-	t.Run("ErrEventFrameNRequired", func(t *testing.T) {
+	t.Run("ErrEventNRequired", func(t *testing.T) {
 		hdr := ltx.Header{Version: 1, PageSize: 1024, EventDataSize: 1, PageN: 1, Commit: 1}
-		if err := hdr.Validate(); err == nil || err.Error() != `event data size must be zero if no event frames exist` {
+		if err := hdr.Validate(); err == nil || err.Error() != `event data size must be zero if no events exist` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
@@ -99,7 +99,7 @@ func TestHeader_MarshalBinary(t *testing.T) {
 		Flags:               0,
 		PageSize:            1024,
 		PageN:               4,
-		EventFrameN:         5,
+		EventN:              5,
 		Commit:              6,
 		MinTXID:             7,
 		MaxTXID:             8,
@@ -133,29 +133,29 @@ func TestHeader_UnmarshalBinary(t *testing.T) {
 	})
 }
 
-func TestEventFrameHeader_Validate(t *testing.T) {
+func TestEventHeader_Validate(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
-		hdr := ltx.EventFrameHeader{Size: 1}
+		hdr := ltx.EventHeader{Size: 1}
 		if err := hdr.Validate(); err != nil {
 			t.Fatal(err)
 		}
 	})
 	t.Run("ErrSizeRequired", func(t *testing.T) {
-		hdr := ltx.EventFrameHeader{}
+		hdr := ltx.EventHeader{}
 		if err := hdr.Validate(); err == nil || err.Error() != `size required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 }
 
-func TestEventFrameHeader_MarshalBinary(t *testing.T) {
-	hdr := ltx.EventFrameHeader{
+func TestEventHeader_MarshalBinary(t *testing.T) {
+	hdr := ltx.EventHeader{
 		Size:  1000,
 		Nonce: [12]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
 		Tag:   [16]byte{12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27},
 	}
 
-	var other ltx.EventFrameHeader
+	var other ltx.EventHeader
 	if b, err := hdr.MarshalBinary(); err != nil {
 		t.Fatal(err)
 	} else if err := other.UnmarshalBinary(b); err != nil {
@@ -165,9 +165,9 @@ func TestEventFrameHeader_MarshalBinary(t *testing.T) {
 	}
 }
 
-func TestEventFrameHeader_UnmarshalBinary(t *testing.T) {
+func TestEventHeader_UnmarshalBinary(t *testing.T) {
 	t.Run("ErrShortBuffer", func(t *testing.T) {
-		var hdr ltx.EventFrameHeader
+		var hdr ltx.EventHeader
 		if err := hdr.UnmarshalBinary(make([]byte, 10)); err != io.ErrShortBuffer {
 			t.Fatal(err)
 		}
