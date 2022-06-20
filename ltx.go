@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc64"
 	"io"
 )
 
@@ -256,6 +257,14 @@ func PageAlign(v int64, pageSize uint32) int64 {
 	//return v + (int64(pageSize)-(v%int64(pageSize)))
 }
 
+// ChecksumPage returns a CRC64 checksum that combines the page number & page data.
+func ChecksumPage(pgno uint32, data []byte) uint64 {
+	h := crc64.New(crc64.MakeTable(crc64.ISO))
+	_ = binary.Write(h, binary.BigEndian, pgno)
+	_, _ = h.Write(data)
+	return h.Sum64()
+}
+
 // FormatTXID returns id formatted as a fixed-width hex number.
 func FormatTXID(id uint64) string {
 	return fmt.Sprintf("%016x", id)
@@ -267,4 +276,9 @@ func FormatTXIDRange(min, max uint64) string {
 		return fmt.Sprintf("%d", min)
 	}
 	return fmt.Sprintf("%d-%d", min, max)
+}
+
+// FormatFilename returns an LTX filename representing a range of transactions.
+func FormatFilename(minTXID, maxTXID uint64) string {
+	return fmt.Sprintf("%016x-%016x.ltx", minTXID, maxTXID)
 }
