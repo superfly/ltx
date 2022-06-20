@@ -20,22 +20,22 @@ func TestHeaderBlockWriter(t *testing.T) {
 
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
 		if err := w.WriteHeader(ltx.Header{
-			Version:    1,
-			PageSize:   4096,
-			PageFrameN: 2,
-			Commit:     3,
-			DBID:       4,
-			MinTXID:    5,
-			MaxTXID:    6,
-			Timestamp:  2000,
+			Version:   1,
+			PageSize:  4096,
+			PageN:     2,
+			Commit:    3,
+			DBID:      4,
+			MinTXID:   5,
+			MaxTXID:   6,
+			Timestamp: 2000,
 		}); err != nil {
 			t.Fatal(err)
 		}
 
 		// Write page headers.
-		if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 1}); err != nil {
+		if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 2}); err != nil {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 2}); err != nil {
 			t.Fatal(err)
 		}
 
@@ -65,7 +65,7 @@ func TestHeaderBlockWriter(t *testing.T) {
 			Version:       1,
 			PageSize:      1024,
 			EventFrameN:   1,
-			PageFrameN:    2,
+			PageN:         2,
 			Commit:        4000,
 			EventDataSize: 60,
 			DBID:          1,
@@ -77,7 +77,7 @@ func TestHeaderBlockWriter(t *testing.T) {
 		}
 
 		// Write page headers.
-		if err := w.WritePageHeader(ltx.PageFrameHeader{
+		if err := w.WritePageHeader(ltx.PageHeader{
 			Pgno:  2000,
 			Nonce: [12]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7},
 			Tag:   [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8},
@@ -85,7 +85,7 @@ func TestHeaderBlockWriter(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := w.WritePageHeader(ltx.PageFrameHeader{
+		if err := w.WritePageHeader(ltx.PageHeader{
 			Pgno:  3000,
 			Nonce: [12]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9},
 			Tag:   [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10},
@@ -116,12 +116,12 @@ func TestHeaderBlockWriter(t *testing.T) {
 	t.Run("ErrNoPageData", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
 		if err := w.WriteHeader(ltx.Header{
-			Version:    1,
-			PageSize:   1024,
-			PageFrameN: 0,
-			Commit:     3,
-			MinTXID:    1,
-			MaxTXID:    1,
+			Version:  1,
+			PageSize: 1024,
+			PageN:    0,
+			Commit:   3,
+			MinTXID:  1,
+			MaxTXID:  1,
 		}); err == nil || err.Error() != `page count required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
@@ -148,9 +148,9 @@ func TestHeaderBlockWriter_Close(t *testing.T) {
 		}
 
 		w := ltx.NewHeaderBlockWriter(ws)
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 1}); err != nil {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err != nil {
 			t.Fatal(err)
 		}
 
@@ -177,9 +177,9 @@ func TestHeaderBlockWriter_Close(t *testing.T) {
 		}
 
 		w := ltx.NewHeaderBlockWriter(ws)
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 1}); err != nil {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err != nil {
 			t.Fatal(err)
 		}
 
@@ -190,9 +190,9 @@ func TestHeaderBlockWriter_Close(t *testing.T) {
 
 	t.Run("ErrClosed", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 1}); err != nil {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err != nil {
 			t.Fatal(err)
 		} else if err := w.Close(); err != nil {
 			t.Fatal(err)
@@ -201,7 +201,7 @@ func TestHeaderBlockWriter_Close(t *testing.T) {
 		// Ensure all methods return an error after close.
 		if err := w.WriteHeader(ltx.Header{}); err != ltx.ErrWriterClosed {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{}); err != ltx.ErrWriterClosed {
+		} else if err := w.WritePageHeader(ltx.PageHeader{}); err != ltx.ErrWriterClosed {
 			t.Fatal(err)
 		} else if err := w.WriteEventHeader(ltx.EventFrameHeader{}); err != ltx.ErrWriterClosed {
 			t.Fatal(err)
@@ -214,7 +214,7 @@ func TestHeaderBlockWriter_Close(t *testing.T) {
 func TestHeaderBlockWriter_WriteHeader(t *testing.T) {
 	t.Run("ErrInvalidState", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
 		}
 		if err := w.WriteHeader(ltx.Header{}); err == nil || err.Error() != `cannot write header frame, expected page header` {
@@ -225,7 +225,7 @@ func TestHeaderBlockWriter_WriteHeader(t *testing.T) {
 	t.Run("ErrWrite", func(t *testing.T) {
 		ws := &mock.WriteSeeker{
 			WriteFunc: func(p []byte) (n int, err error) {
-				if len(p) == ltx.PageFrameHeaderSize {
+				if len(p) == ltx.PageHeaderSize {
 					return 0, fmt.Errorf("marker")
 				}
 				return len(p), nil
@@ -234,10 +234,10 @@ func TestHeaderBlockWriter_WriteHeader(t *testing.T) {
 		}
 
 		w := ltx.NewHeaderBlockWriter(ws)
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
 		}
-		if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 1}); err == nil || err.Error() != `write: marker` {
+		if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err == nil || err.Error() != `write: marker` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
@@ -253,9 +253,9 @@ func TestHeaderBlockWriter_WriteEventHeader(t *testing.T) {
 
 	t.Run("ErrSizeRequired", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, EventFrameN: 1, PageFrameN: 1, Commit: 1, EventDataSize: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, EventFrameN: 1, PageN: 1, Commit: 1, EventDataSize: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 1}); err != nil {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err != nil {
 			t.Fatal(err)
 		} else if err := w.WriteEventHeader(ltx.EventFrameHeader{Size: 0}); err == nil || err.Error() != `size required` {
 			t.Fatalf("unexpected error: %s", err)
@@ -266,56 +266,56 @@ func TestHeaderBlockWriter_WriteEventHeader(t *testing.T) {
 func TestHeaderBlockWriter_WritePageHeader(t *testing.T) {
 	t.Run("ErrInvalidState", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WritePageHeader(ltx.PageFrameHeader{}); err == nil || err.Error() != `cannot write page header, expected header` {
+		if err := w.WritePageHeader(ltx.PageHeader{}); err == nil || err.Error() != `cannot write page header, expected header` {
 			t.Fatal(err)
 		}
 	})
 
 	t.Run("ErrPageNumberRequired", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 0}); err == nil || err.Error() != `page number required` {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 0}); err == nil || err.Error() != `page number required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 
 	t.Run("ErrPageNumberOutOfBounds", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 4, DBID: 1, MinTXID: 2, MaxTXID: 2}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 4, DBID: 1, MinTXID: 2, MaxTXID: 2}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 5}); err == nil || err.Error() != `page number 5 out-of-bounds for commit size 4` {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 5}); err == nil || err.Error() != `page number 5 out-of-bounds for commit size 4` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 
 	t.Run("ErrSnapshotInitialPage", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 2, Commit: 2, DBID: 1, MinTXID: 1, MaxTXID: 2}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageN: 2, Commit: 2, DBID: 1, MinTXID: 1, MaxTXID: 2}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 2}); err == nil || err.Error() != `snapshot transaction file must start with page number 1` {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 2}); err == nil || err.Error() != `snapshot transaction file must start with page number 1` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 
 	t.Run("ErrSnapshotNonsequentialPages", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 3, Commit: 3, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageN: 3, Commit: 3, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 1}); err != nil {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 3}); err == nil || err.Error() != `nonsequential page numbers in snapshot transaction: 1,3` {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 3}); err == nil || err.Error() != `nonsequential page numbers in snapshot transaction: 1,3` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 
 	t.Run("ErrOutOfOrderPages", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageFrameN: 2, Commit: 2, DBID: 1, MinTXID: 2, MaxTXID: 2}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, PageN: 2, Commit: 2, DBID: 1, MinTXID: 2, MaxTXID: 2}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 2}); err != nil {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 2}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 1}); err == nil || err.Error() != `out-of-order page numbers: 2,1` {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err == nil || err.Error() != `out-of-order page numbers: 2,1` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
@@ -331,9 +331,9 @@ func TestHeaderBlockWriter_WriteEventData(t *testing.T) {
 
 	t.Run("ErrSizeMismatch", func(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, EventFrameN: 1, PageFrameN: 1, Commit: 1, EventDataSize: 10, DBID: 1, MinTXID: 2, MaxTXID: 2}); err != nil {
+		if err := w.WriteHeader(ltx.Header{Version: 1, PageSize: 1024, EventFrameN: 1, PageN: 1, Commit: 1, EventDataSize: 10, DBID: 1, MinTXID: 2, MaxTXID: 2}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 1}); err != nil {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err != nil {
 			t.Fatal(err)
 		} else if err := w.WriteEventHeader(ltx.EventFrameHeader{Size: 10}); err != nil {
 			t.Fatal(err)
@@ -349,7 +349,7 @@ func TestHeaderBlockWriter_WritePageData(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx") ))
 		if err := w.WriteHeaderFrame(ltx.HeaderFrame{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 1, DBID: 1, MinTXID: 2, MaxTXID: 2}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 1}); err != nil {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err != nil {
 			t.Fatal(err)
 		} else if err := w.Close(); err != nil {
 			t.Fatal(err)
@@ -373,7 +373,7 @@ func TestHeaderBlockWriter_WritePageData(t *testing.T) {
 		w := ltx.NewHeaderBlockWriter(createFile(t, filepath.Join(t.TempDir(), "ltx") ))
 		if err := w.WriteHeaderFrame(ltx.HeaderFrame{Version: 1, PageSize: 1024, PageFrameN: 1, Commit: 1, DBID: 1, MinTXID: 2, MaxTXID: 2}); err != nil {
 			t.Fatal(err)
-		} else if err := w.WritePageHeader(ltx.PageFrameHeader{Pgno: 1}); err != nil {
+		} else if err := w.WritePageHeader(ltx.PageHeader{Pgno: 1}); err != nil {
 			t.Fatal(err)
 		} else if err := w.WritePageData(make([]byte, 500)); err == nil || err.Error() != `page must be size specified in header (1024 bytes)` {
 			t.Fatalf("unexpected error: %s", err)

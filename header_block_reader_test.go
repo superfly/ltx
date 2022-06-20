@@ -17,7 +17,7 @@ func TestHeaderBlockReader(t *testing.T) {
 				Version:       1,
 				PageSize:      1024,
 				EventFrameN:   1,
-				PageFrameN:    2,
+				PageN:         2,
 				Commit:        2,
 				EventDataSize: 60,
 				DBID:          1,
@@ -32,13 +32,13 @@ func TestHeaderBlockReader(t *testing.T) {
 					Tag:   [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12},
 				},
 			},
-			PageHeaders: []ltx.PageFrameHeader{
-				ltx.PageFrameHeader{
+			PageHeaders: []ltx.PageHeader{
+				ltx.PageHeader{
 					Pgno:  1,
 					Nonce: [12]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7},
 					Tag:   [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8},
 				},
-				ltx.PageFrameHeader{
+				ltx.PageHeader{
 					Pgno:  2,
 					Nonce: [12]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9},
 					Tag:   [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10},
@@ -70,7 +70,7 @@ func TestHeaderBlockReader(t *testing.T) {
 
 		// Verify page headers.
 		for i := range spec.PageHeaders {
-			var hdr ltx.PageFrameHeader
+			var hdr ltx.PageHeader
 			if err := r.ReadPageHeader(&hdr); err != nil {
 				t.Fatal(err)
 			} else if got, want := hdr, spec.PageHeaders[i]; got != want {

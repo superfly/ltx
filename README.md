@@ -44,7 +44,7 @@ check.
 | 8      | 4    | Page size, in bytes.                    |
 | 12     | 4    | Event frame count.                      |
 | 16     | 4    | Total event data size.                  |
-| 20     | 4    | Page frame count.                       |
+| 20     | 4    | Page count.                             |
 | 24     | 4    | Size of DB after transaction, in pages. |
 | 28     | 8    | Minimum transaction ID.                 |
 | 36     | 8    | Maximum transaction ID.                 |

@@ -19,7 +19,7 @@ const (
 // Header size constants.
 const (
 	HeaderSize           = 76
-	PageFrameHeaderSize  = 32
+	PageHeaderSize       = 32
 	EventFrameHeaderSize = 32
 )
 
@@ -57,7 +57,7 @@ type Header struct {
 	Version             int    // based on magic
 	Flags               uint32 // reserved flags
 	PageSize            uint32 // page size, in bytes
-	PageFrameN          uint32 // page frame count in ltx file
+	PageN               uint32 // page count in ltx file
 	EventFrameN         uint32 // event frame count in ltx file
 	EventDataSize       uint32 // total size of all event data
 	Commit              uint32 // db size after transaction, in pages
@@ -80,7 +80,7 @@ func (h *Header) IsSnapshot() bool {
 // Must be a valid header frame.
 func (h *Header) HeaderBlockSize() int64 {
 	sz := HeaderSize +
-		(int64(h.PageFrameN) * PageFrameHeaderSize) +
+		(int64(h.PageN) * PageHeaderSize) +
 		(int64(h.EventFrameN) * EventFrameHeaderSize) + int64(h.EventDataSize)
 	return PageAlign(sz, h.PageSize)
 }
@@ -93,7 +93,7 @@ func (h *Header) Validate() error {
 		return fmt.Errorf("invalid flags: 0x%08x", h.Flags)
 	} else if !IsValidPageSize(h.PageSize) {
 		return fmt.Errorf("invalid page size: %d", h.PageSize)
-	} else if h.PageFrameN == 0 {
+	} else if h.PageN == 0 {
 		return fmt.Errorf("page count required")
 	} else if h.Commit == 0 {
 		return fmt.Errorf("commit record required")
@@ -109,8 +109,8 @@ func (h *Header) Validate() error {
 		return fmt.Errorf("maximum transaction id required")
 	} else if h.MinTXID > h.MaxTXID {
 		return fmt.Errorf("transaction ids out of order: (%d,%d)", h.MinTXID, h.MaxTXID)
-	} else if h.IsSnapshot() && h.PageFrameN < h.Commit {
-		return fmt.Errorf("snapshot page count %d must equal commit size %d", h.PageFrameN, h.Commit)
+	} else if h.IsSnapshot() && h.PageN < h.Commit {
+		return fmt.Errorf("snapshot page count %d must equal commit size %d", h.PageN, h.Commit)
 	}
 	return nil
 }
@@ -121,7 +121,7 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	copy(b[0:4], Magic)
 	binary.BigEndian.PutUint32(b[4:], h.Flags)
 	binary.BigEndian.PutUint32(b[8:], h.PageSize)
-	binary.BigEndian.PutUint32(b[12:], h.PageFrameN)
+	binary.BigEndian.PutUint32(b[12:], h.PageN)
 	binary.BigEndian.PutUint32(b[16:], h.EventFrameN)
 	binary.BigEndian.PutUint32(b[20:], h.EventDataSize)
 	binary.BigEndian.PutUint32(b[24:], h.Commit)
@@ -145,7 +145,7 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.Version = Version
 	h.Flags = binary.BigEndian.Uint32(b[4:])
 	h.PageSize = binary.BigEndian.Uint32(b[8:])
-	h.PageFrameN = binary.BigEndian.Uint32(b[12:])
+	h.PageN = binary.BigEndian.Uint32(b[12:])
 	h.EventFrameN = binary.BigEndian.Uint32(b[16:])
 	h.EventDataSize = binary.BigEndian.Uint32(b[20:])
 	h.Commit = binary.BigEndian.Uint32(b[24:])
@@ -210,15 +210,15 @@ func (h *EventFrameHeader) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
-// PageFrameHeader represents the header for a single page frame in an LTX file.
-type PageFrameHeader struct {
+// PageHeader represents the header for a single page in an LTX file.
+type PageHeader struct {
 	Pgno  uint32
 	Nonce [12]byte
 	Tag   [16]byte
 }
 
 // Validate returns an error if h is invalid.
-func (h *PageFrameHeader) Validate() error {
+func (h *PageHeader) Validate() error {
 	if h.Pgno == 0 {
 		return fmt.Errorf("page number required")
 	}
@@ -226,8 +226,8 @@ func (h *PageFrameHeader) Validate() error {
 }
 
 // MarshalBinary encodes h to a byte slice.
-func (h *PageFrameHeader) MarshalBinary() ([]byte, error) {
-	b := make([]byte, PageFrameHeaderSize)
+func (h *PageHeader) MarshalBinary() ([]byte, error) {
+	b := make([]byte, PageHeaderSize)
 	binary.BigEndian.PutUint32(b[0:], h.Pgno)
 	copy(b[4:], h.Nonce[:])
 	copy(b[16:], h.Tag[:])
@@ -235,8 +235,8 @@ func (h *PageFrameHeader) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary decodes h from a byte slice.
-func (h *PageFrameHeader) UnmarshalBinary(b []byte) error {
-	if len(b) < PageFrameHeaderSize {
+func (h *PageHeader) UnmarshalBinary(b []byte) error {
+	if len(b) < PageHeaderSize {
 		return io.ErrShortBuffer
 	}
 

@@ -75,14 +75,14 @@ func (r *HeaderBlockReader) ReadHeader(hdr *Header) error {
 
 // ReadPageHeader reads the next page header into hdr and initializes reader
 // to read associated page data.
-func (r *HeaderBlockReader) ReadPageHeader(hdr *PageFrameHeader) error {
+func (r *HeaderBlockReader) ReadPageHeader(hdr *PageHeader) error {
 	if r.state == stateClosed {
 		return ErrReaderClosed
 	} else if r.state != statePageHeader && r.state != stateClose {
 		return fmt.Errorf("cannot read page header, expected %s", r.state)
 	}
 
-	b := make([]byte, PageFrameHeaderSize)
+	b := make([]byte, PageHeaderSize)
 	if _, err := io.ReadFull(r.r, b); err != nil {
 		return err
 	} else if err := hdr.UnmarshalBinary(b); err != nil {
@@ -93,7 +93,7 @@ func (r *HeaderBlockReader) ReadPageHeader(hdr *PageFrameHeader) error {
 	r.n += len(b)
 
 	r.pageHeadersRead++
-	if r.pageHeadersRead == r.hdr.PageFrameN {
+	if r.pageHeadersRead == r.hdr.PageN {
 		if r.hdr.EventFrameN > 0 {
 			r.state = stateEventHeader
 		} else {

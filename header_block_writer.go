@@ -103,7 +103,7 @@ func (w *HeaderBlockWriter) WriteHeader(hdr Header) error {
 }
 
 // WritePageHeader writes hdr to the file's page header block.
-func (w *HeaderBlockWriter) WritePageHeader(hdr PageFrameHeader) (err error) {
+func (w *HeaderBlockWriter) WritePageHeader(hdr PageHeader) (err error) {
 	if w.state == stateClosed {
 		return ErrWriterClosed
 	} else if w.state != statePageHeader {
@@ -142,7 +142,7 @@ func (w *HeaderBlockWriter) WritePageHeader(hdr PageFrameHeader) (err error) {
 	w.prevPgno = hdr.Pgno
 
 	// Exit if we still have more headers to write.
-	if w.pageHeadersWritten < w.hdr.PageFrameN {
+	if w.pageHeadersWritten < w.hdr.PageN {
 		return nil
 	}
 

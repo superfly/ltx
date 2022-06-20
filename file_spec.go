@@ -10,7 +10,7 @@ import (
 // FileSpec is an in-memory representation of an LTX file. Typically used for testing.
 type FileSpec struct {
 	Header       Header
-	PageHeaders  []PageFrameHeader
+	PageHeaders  []PageHeader
 	EventHeaders []EventFrameHeader
 	EventData    [][]byte
 	PageData     [][]byte
@@ -55,7 +55,7 @@ func (s *FileSpec) Bytes() ([]byte, error) {
 		}
 	}
 
-	pw := NewPageBlockWriter(&buf, s.Header.PageFrameN, s.Header.PageSize)
+	pw := NewPageBlockWriter(&buf, s.Header.PageN, s.Header.PageSize)
 	for i, data := range s.PageData {
 		if _, err := pw.Write(data); err != nil {
 			return nil, fmt.Errorf("write page data[%d]: %s", i, err)
@@ -95,8 +95,8 @@ func (s *FileSpec) ReadFrom(r io.Reader) (n int, err error) {
 		return 0, fmt.Errorf("read header: %s", err)
 	}
 
-	s.PageHeaders = make([]PageFrameHeader, s.Header.PageFrameN)
-	s.PageData = make([][]byte, s.Header.PageFrameN)
+	s.PageHeaders = make([]PageHeader, s.Header.PageN)
+	s.PageData = make([][]byte, s.Header.PageN)
 
 	if s.Header.EventFrameN > 0 {
 		s.EventHeaders = make([]EventFrameHeader, s.Header.EventFrameN)
@@ -125,7 +125,7 @@ func (s *FileSpec) ReadFrom(r io.Reader) (n int, err error) {
 	}
 
 	// Open page block reader to read remaining page data from reader.
-	pr := NewPageBlockReader(r, s.Header.PageFrameN, s.Header.PageSize, s.Header.PageBlockChecksum)
+	pr := NewPageBlockReader(r, s.Header.PageN, s.Header.PageSize, s.Header.PageBlockChecksum)
 	for i := range s.PageData {
 		s.PageData[i] = make([]byte, s.Header.PageSize)
 		if _, err := io.ReadFull(pr, s.PageData[i]); err != nil {
