@@ -265,6 +265,30 @@ func TestPageAlign(t *testing.T) {
 	}
 }
 
+func TestParseFilename(t *testing.T) {
+	t.Run("OK", func(t *testing.T) {
+		if min, max, err := ltx.ParseFilename("0000000000000001-00000000000003e8.ltx"); err != nil {
+			t.Fatal(err)
+		} else if got, want := min, uint64(1); got != want {
+			t.Fatalf("min=%d, want %d", got, want)
+		} else if got, want := max, uint64(1000); got != want {
+			t.Fatalf("max=%d, want %d", got, want)
+		}
+	})
+
+	t.Run("ErrInvalid", func(t *testing.T) {
+		if _, _, err := ltx.ParseFilename("000000000000000z-00000000000003e8.ltx"); err == nil {
+			t.Fatal("expected error")
+		}
+		if _, _, err := ltx.ParseFilename("0000000000000001.ltx"); err == nil {
+			t.Fatal("expected error")
+		}
+		if _, _, err := ltx.ParseFilename("000000000000000z-00000000000003e8.zzz"); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
 // createFile creates a file and returns the file handle. Closes on cleanup.
 func createFile(tb testing.TB, name string) *os.File {
 	tb.Helper()

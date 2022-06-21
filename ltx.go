@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"hash/crc64"
 	"io"
+	"regexp"
+	"strconv"
 )
 
 const (
@@ -277,6 +279,20 @@ func FormatTXIDRange(min, max uint64) string {
 	}
 	return fmt.Sprintf("%d-%d", min, max)
 }
+
+// ParseFilename parses a transaction range from an LTX file.
+func ParseFilename(name string) (minTXID, maxTXID uint64, err error) {
+	a := filenameRegex.FindStringSubmatch(name)
+	if a == nil {
+		return 0, 0, fmt.Errorf("invalid ltx filename: %s", name)
+	}
+
+	minTXID, _ = strconv.ParseUint(a[1], 16, 64)
+	maxTXID, err = strconv.ParseUint(a[2], 16, 64)
+	return minTXID, maxTXID, nil
+}
+
+var filenameRegex = regexp.MustCompile(`^([0-9a-f]{16})-([0-9a-f]{16})\.ltx$`)
 
 // FormatFilename returns an LTX filename representing a range of transactions.
 func FormatFilename(minTXID, maxTXID uint64) string {
