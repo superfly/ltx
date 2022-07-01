@@ -44,7 +44,7 @@ func (r *PageBlockReader) Close() error {
 
 // Checksum returns the calculated checksum of the page data read.
 func (r *PageBlockReader) Checksum() uint64 {
-	return r.hash.Sum64()
+	return ChecksumFlag | r.hash.Sum64()
 }
 
 // Size returns the expected number of bytes to be read from the reader.

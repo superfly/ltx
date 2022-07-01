@@ -15,16 +15,19 @@ func TestCompactor_Compact(t *testing.T) {
 		dir := t.TempDir()
 		input := &ltx.FileSpec{
 			Header: ltx.Header{
-				Version:      1,
-				PageSize:     512,
-				PageN:        1,
-				Commit:       1,
-				DBID:         1,
-				MinTXID:      1,
-				MaxTXID:      1,
-				Timestamp:    1000,
-				PreChecksum:  0,
-				PostChecksum: ltx.PageChecksumFlag | 1,
+				Version:             1,
+				PageSize:            512,
+				PageN:               1,
+				Commit:              1,
+				DBID:                1,
+				MinTXID:             1,
+				MaxTXID:             1,
+				Timestamp:           1000,
+				PreChecksum:         0,
+				PostChecksum:        ltx.ChecksumFlag | 1,
+				HeaderBlockChecksum: 0x90f21f4960b7564f,
+				PageBlockChecksum:   0x966605a36b05fc7c,
+				HeaderChecksum:      0xebacd45d7115aff8,
 			},
 			PageHeaders: []ltx.PageHeader{
 				{
@@ -52,7 +55,17 @@ func TestCompactor_Compact(t *testing.T) {
 	t.Run("SnapshotPageDataOnly", func(t *testing.T) {
 		spec, err := compactFileSpecs(t, ltx.NewCompactor(),
 			&ltx.FileSpec{
-				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 3, Commit: 3, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000, PostChecksum: ltx.PageChecksumFlag | 1},
+				Header: ltx.Header{
+					Version:      1,
+					PageSize:     1024,
+					PageN:        3,
+					Commit:       3,
+					DBID:         1,
+					MinTXID:      1,
+					MaxTXID:      1,
+					Timestamp:    1000,
+					PostChecksum: ltx.ChecksumFlag | 1,
+				},
 				PageHeaders: []ltx.PageHeader{
 					{Pgno: 1},
 					{Pgno: 2},
@@ -65,7 +78,18 @@ func TestCompactor_Compact(t *testing.T) {
 				},
 			},
 			&ltx.FileSpec{
-				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 2, Commit: 3, DBID: 1, MinTXID: 2, MaxTXID: 2, Timestamp: 2000, PreChecksum: ltx.PageChecksumFlag | 2, PostChecksum: ltx.PageChecksumFlag | 2},
+				Header: ltx.Header{
+					Version:      1,
+					PageSize:     1024,
+					PageN:        2,
+					Commit:       3,
+					DBID:         1,
+					MinTXID:      2,
+					MaxTXID:      2,
+					Timestamp:    2000,
+					PreChecksum:  ltx.ChecksumFlag | 2,
+					PostChecksum: ltx.ChecksumFlag | 2,
+				},
 				PageHeaders: []ltx.PageHeader{
 					{Pgno: 1},
 					{Pgno: 3},
@@ -81,7 +105,20 @@ func TestCompactor_Compact(t *testing.T) {
 		}
 
 		assertFileSpecEqual(t, spec, &ltx.FileSpec{
-			Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 3, Commit: 3, DBID: 1, MinTXID: 1, MaxTXID: 2, Timestamp: 1000, PostChecksum: ltx.PageChecksumFlag | 2},
+			Header: ltx.Header{
+				Version:             1,
+				PageSize:            1024,
+				PageN:               3,
+				Commit:              3,
+				DBID:                1,
+				MinTXID:             1,
+				MaxTXID:             2,
+				Timestamp:           1000,
+				PostChecksum:        ltx.ChecksumFlag | 2,
+				HeaderBlockChecksum: 0x90f21f4960b7564f,
+				PageBlockChecksum:   0x966605a36b05fc7c,
+				HeaderChecksum:      0xebacd45d7115aff8,
+			},
 			PageHeaders: []ltx.PageHeader{
 				{Pgno: 1},
 				{Pgno: 2},
@@ -97,7 +134,18 @@ func TestCompactor_Compact(t *testing.T) {
 	t.Run("NonSnapshotPageDataOnly", func(t *testing.T) {
 		spec, err := compactFileSpecs(t, ltx.NewCompactor(),
 			&ltx.FileSpec{
-				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 3, DBID: 1, MinTXID: 2, MaxTXID: 3, Timestamp: 1000, PreChecksum: ltx.PageChecksumFlag | 2, PostChecksum: ltx.PageChecksumFlag | 3},
+				Header: ltx.Header{
+					Version:      1,
+					PageSize:     1024,
+					PageN:        1,
+					Commit:       3,
+					DBID:         1,
+					MinTXID:      2,
+					MaxTXID:      3,
+					Timestamp:    1000,
+					PreChecksum:  ltx.ChecksumFlag | 2,
+					PostChecksum: ltx.ChecksumFlag | 3,
+				},
 				PageHeaders: []ltx.PageHeader{
 					{Pgno: 3},
 				},
@@ -106,7 +154,17 @@ func TestCompactor_Compact(t *testing.T) {
 				},
 			},
 			&ltx.FileSpec{
-				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 3, DBID: 1, MinTXID: 4, MaxTXID: 5, Timestamp: 2000, PreChecksum: ltx.PageChecksumFlag | 4, PostChecksum: ltx.PageChecksumFlag | 5},
+				Header: ltx.Header{Version: 1,
+					PageSize:     1024,
+					PageN:        1,
+					Commit:       3,
+					DBID:         1,
+					MinTXID:      4,
+					MaxTXID:      5,
+					Timestamp:    2000,
+					PreChecksum:  ltx.ChecksumFlag | 4,
+					PostChecksum: ltx.ChecksumFlag | 5,
+				},
 				PageHeaders: []ltx.PageHeader{
 					{Pgno: 1},
 				},
@@ -115,7 +173,7 @@ func TestCompactor_Compact(t *testing.T) {
 				},
 			},
 			&ltx.FileSpec{
-				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 3, Commit: 5, DBID: 1, MinTXID: 6, MaxTXID: 9, Timestamp: 3000, PreChecksum: ltx.PageChecksumFlag | 6, PostChecksum: ltx.PageChecksumFlag | 9},
+				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 3, Commit: 5, DBID: 1, MinTXID: 6, MaxTXID: 9, Timestamp: 3000, PreChecksum: ltx.ChecksumFlag | 6, PostChecksum: ltx.ChecksumFlag | 9},
 				PageHeaders: []ltx.PageHeader{
 					{Pgno: 2},
 					{Pgno: 3},
@@ -133,7 +191,21 @@ func TestCompactor_Compact(t *testing.T) {
 		}
 
 		assertFileSpecEqual(t, spec, &ltx.FileSpec{
-			Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 4, Commit: 5, DBID: 1, MinTXID: 2, MaxTXID: 9, Timestamp: 1000, PreChecksum: ltx.PageChecksumFlag | 2, PostChecksum: ltx.PageChecksumFlag | 9},
+			Header: ltx.Header{
+				Version:             1,
+				PageSize:            1024,
+				PageN:               4,
+				Commit:              5,
+				DBID:                1,
+				MinTXID:             2,
+				MaxTXID:             9,
+				Timestamp:           1000,
+				PreChecksum:         ltx.ChecksumFlag | 2,
+				PostChecksum:        ltx.ChecksumFlag | 9,
+				HeaderBlockChecksum: 0xd3a6fc4d334133ce,
+				PageBlockChecksum:   0xd66f0548adf3c72a,
+				HeaderChecksum:      0xc30f2982b5f4977c,
+			},
 			PageHeaders: []ltx.PageHeader{
 				{Pgno: 1},
 				{Pgno: 2},
@@ -163,7 +235,7 @@ func TestCompactor_Compact(t *testing.T) {
 				MinTXID:       1,
 				MaxTXID:       1,
 				Timestamp:     1000,
-				PostChecksum:  ltx.PageChecksumFlag | 1,
+				PostChecksum:  ltx.ChecksumFlag | 1,
 			},
 			PageHeaders: []ltx.PageHeader{{Pgno: 1,
 				Nonce: [12]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7},
@@ -196,7 +268,19 @@ func TestCompactor_Compact(t *testing.T) {
 	t.Run("MultiFileWithPageAndEventData", func(t *testing.T) {
 		spec, err := compactFileSpecs(t, ltx.NewCompactor(),
 			&ltx.FileSpec{
-				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 1, EventN: 2, EventDataSize: 130, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000, PostChecksum: ltx.PageChecksumFlag | 1},
+				Header: ltx.Header{
+					Version:       1,
+					PageSize:      1024,
+					PageN:         1,
+					EventN:        2,
+					EventDataSize: 130,
+					Commit:        1,
+					DBID:          1,
+					MinTXID:       1,
+					MaxTXID:       1,
+					Timestamp:     1000,
+					PostChecksum:  ltx.ChecksumFlag | 1,
+				},
 				PageHeaders: []ltx.PageHeader{
 					{Pgno: 1},
 				},
@@ -213,7 +297,18 @@ func TestCompactor_Compact(t *testing.T) {
 				},
 			},
 			&ltx.FileSpec{
-				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 2, MaxTXID: 2, Timestamp: 2000, PreChecksum: ltx.PageChecksumFlag | 2, PostChecksum: ltx.PageChecksumFlag | 2},
+				Header: ltx.Header{
+					Version:      1,
+					PageSize:     1024,
+					PageN:        1,
+					Commit:       1,
+					DBID:         1,
+					MinTXID:      2,
+					MaxTXID:      2,
+					Timestamp:    2000,
+					PreChecksum:  ltx.ChecksumFlag | 2,
+					PostChecksum: ltx.ChecksumFlag | 2,
+				},
 				PageHeaders: []ltx.PageHeader{
 					{Pgno: 1},
 				},
@@ -222,7 +317,20 @@ func TestCompactor_Compact(t *testing.T) {
 				},
 			},
 			&ltx.FileSpec{
-				Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 1, EventN: 1, EventDataSize: 80, Commit: 1, DBID: 1, MinTXID: 3, MaxTXID: 3, Timestamp: 3000, PreChecksum: ltx.PageChecksumFlag | 3, PostChecksum: ltx.PageChecksumFlag | 3},
+				Header: ltx.Header{
+					Version:       1,
+					PageSize:      1024,
+					PageN:         1,
+					EventN:        1,
+					EventDataSize: 80,
+					Commit:        1,
+					DBID:          1,
+					MinTXID:       3,
+					MaxTXID:       3,
+					Timestamp:     3000,
+					PreChecksum:   ltx.ChecksumFlag | 3,
+					PostChecksum:  ltx.ChecksumFlag | 3,
+				},
 				PageHeaders: []ltx.PageHeader{
 					{Pgno: 1},
 				},
@@ -242,7 +350,22 @@ func TestCompactor_Compact(t *testing.T) {
 		}
 
 		assertFileSpecEqual(t, spec, &ltx.FileSpec{
-			Header: ltx.Header{Version: 1, PageSize: 1024, PageN: 1, EventN: 3, EventDataSize: 210, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 3, Timestamp: 1000, PostChecksum: ltx.PageChecksumFlag | 3},
+			Header: ltx.Header{
+				Version:             1,
+				PageSize:            1024,
+				PageN:               1,
+				EventN:              3,
+				EventDataSize:       210,
+				Commit:              1,
+				DBID:                1,
+				MinTXID:             1,
+				MaxTXID:             3,
+				Timestamp:           1000,
+				PostChecksum:        ltx.ChecksumFlag | 3,
+				HeaderBlockChecksum: 0x9bf0613f95224d99,
+				PageBlockChecksum:   0xea0a288a8aaaaaaa,
+				HeaderChecksum:      0xa114ec11f1bce0df,
+			},
 			PageHeaders: []ltx.PageHeader{
 				{Pgno: 1},
 			},
@@ -280,12 +403,12 @@ func TestCompactor_Compact(t *testing.T) {
 	t.Run("ErrDBIDMismatch", func(t *testing.T) {
 		_, err := compactFileSpecs(t, ltx.NewCompactor(),
 			&ltx.FileSpec{
-				Header:      ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000, PostChecksum: ltx.PageChecksumFlag | 1},
+				Header:      ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000, PostChecksum: ltx.ChecksumFlag | 1},
 				PageHeaders: []ltx.PageHeader{{Pgno: 1}},
 				PageData:    [][]byte{bytes.Repeat([]byte{0x81}, 1024)},
 			},
 			&ltx.FileSpec{
-				Header:      ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 2, MinTXID: 1, MaxTXID: 1, Timestamp: 1000, PostChecksum: ltx.PageChecksumFlag | 1},
+				Header:      ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 2, MinTXID: 1, MaxTXID: 1, Timestamp: 1000, PostChecksum: ltx.ChecksumFlag | 1},
 				PageHeaders: []ltx.PageHeader{{Pgno: 1}},
 				PageData:    [][]byte{bytes.Repeat([]byte{0x91}, 1024)},
 			},
@@ -297,12 +420,12 @@ func TestCompactor_Compact(t *testing.T) {
 	t.Run("ErrPageSizeMismatch", func(t *testing.T) {
 		_, err := compactFileSpecs(t, ltx.NewCompactor(),
 			&ltx.FileSpec{
-				Header:      ltx.Header{Version: 1, PageSize: 512, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000, PostChecksum: ltx.PageChecksumFlag | 1},
+				Header:      ltx.Header{Version: 1, PageSize: 512, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000, PostChecksum: ltx.ChecksumFlag | 1},
 				PageHeaders: []ltx.PageHeader{{Pgno: 1}},
 				PageData:    [][]byte{bytes.Repeat([]byte{0x81}, 512)},
 			},
 			&ltx.FileSpec{
-				Header:      ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000, PostChecksum: ltx.PageChecksumFlag | 1},
+				Header:      ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000, PostChecksum: ltx.ChecksumFlag | 1},
 				PageHeaders: []ltx.PageHeader{{Pgno: 1}},
 				PageData:    [][]byte{bytes.Repeat([]byte{0x91}, 1024)},
 			},
@@ -314,12 +437,12 @@ func TestCompactor_Compact(t *testing.T) {
 	t.Run("ErrNonContiguousTXID", func(t *testing.T) {
 		_, err := compactFileSpecs(t, ltx.NewCompactor(),
 			&ltx.FileSpec{
-				Header:      ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 2, Timestamp: 1000, PostChecksum: ltx.PageChecksumFlag | 2},
+				Header:      ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 2, Timestamp: 1000, PostChecksum: ltx.ChecksumFlag | 2},
 				PageHeaders: []ltx.PageHeader{{Pgno: 1}},
 				PageData:    [][]byte{bytes.Repeat([]byte{0x81}, 1024)},
 			},
 			&ltx.FileSpec{
-				Header:      ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 2, MaxTXID: 2, Timestamp: 1000, PreChecksum: ltx.PageChecksumFlag | 2, PostChecksum: ltx.PageChecksumFlag | 2},
+				Header:      ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 2, MaxTXID: 2, Timestamp: 1000, PreChecksum: ltx.ChecksumFlag | 2, PostChecksum: ltx.ChecksumFlag | 2},
 				PageHeaders: []ltx.PageHeader{{Pgno: 1}},
 				PageData:    [][]byte{bytes.Repeat([]byte{0x91}, 1024)},
 			},
@@ -331,7 +454,7 @@ func TestCompactor_Compact(t *testing.T) {
 	t.Run("ErrCannotCreateOutputFile", func(t *testing.T) {
 		dir := t.TempDir()
 		writeFileSpec(t, filepath.Join(dir, "input"), &ltx.FileSpec{
-			Header:      ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 2, Timestamp: 1000, PostChecksum: ltx.PageChecksumFlag | 2},
+			Header:      ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 2, Timestamp: 1000, PostChecksum: ltx.ChecksumFlag | 2},
 			PageHeaders: []ltx.PageHeader{{Pgno: 1}},
 			PageData:    [][]byte{bytes.Repeat([]byte{0x81}, 1024)},
 		})

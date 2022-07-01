@@ -34,9 +34,15 @@ func NewHeaderBlockWriter(w io.WriteSeeker) *HeaderBlockWriter {
 	}
 }
 
-// Checksum returns the checksum of the header. Only valid after close.
-func (w *HeaderBlockWriter) Checksum() uint64 {
-	return w.hash.Sum64()
+// Header returns the header. Checksums are only applied after Close().
+func (w *HeaderBlockWriter) Header() Header {
+	return w.hdr
+}
+
+// SetPostChecksum sets the post-apply checksum of the database.
+// Must call after WriteHeaderFrame() & before Close().
+func (w *HeaderBlockWriter) SetPostChecksum(chksum uint64) {
+	w.hdr.PostChecksum = chksum
 }
 
 // SetPageBlockChecksum sets the checksum of the page block.
@@ -54,7 +60,7 @@ func (w *HeaderBlockWriter) Close() error {
 	}
 
 	// Update checksum on header.
-	w.hdr.HeaderBlockChecksum = w.hash.Sum64()
+	w.hdr.HeaderBlockChecksum = ChecksumFlag | w.hash.Sum64()
 
 	// Rewrite header with new checksum.
 	if b, err := w.hdr.MarshalBinary(); err != nil {
@@ -76,25 +82,21 @@ func (w *HeaderBlockWriter) WriteHeader(hdr Header) error {
 		return ErrWriterClosed
 	} else if w.state != stateHeader {
 		return fmt.Errorf("cannot write header frame, expected %s", w.state)
-	} else if err := hdr.Validate(); err != nil {
+	} else if err := hdr.Prevalidate(); err != nil {
 		return err
 	}
 
 	w.hdr = hdr
 	w.hdr.HeaderBlockChecksum = 0
 
-	// Write header without checksums. We'll write the checksum at the end.
-	b, err := w.hdr.MarshalBinary()
-	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
-	} else if _, err := w.w.Write(b); err != nil {
-		return fmt.Errorf("write: %w", err)
+	// Fill in header space with NULL values. We'll rewrite it at the end.
+	if _, err := w.w.Write(make([]byte, HeaderSize)); err != nil {
+		return fmt.Errorf("fill: %w", err)
 	}
 
 	// Begin computing the checksum with the upper bytes of the header.
 	w.hash = crc64.New(crc64.MakeTable(crc64.ISO))
-	_, _ = w.hash.Write(b[:HeaderBlockChecksumOffset])
-	w.n += len(b)
+	w.n += HeaderSize
 
 	// Move writer state to write page headers.
 	w.state = statePageHeader // file must have at least one page

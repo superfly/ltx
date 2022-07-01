@@ -24,7 +24,7 @@ func TestHeaderBlockReader(t *testing.T) {
 				MinTXID:       1,
 				MaxTXID:       1,
 				Timestamp:     1000,
-				PostChecksum:  ltx.PageChecksumFlag | 1,
+				PostChecksum:  ltx.ChecksumFlag | 1,
 			},
 			EventHeaders: []ltx.EventHeader{
 				{

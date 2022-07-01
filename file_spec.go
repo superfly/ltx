@@ -69,9 +69,8 @@ func (s *FileSpec) Bytes() ([]byte, error) {
 		return nil, fmt.Errorf("close header block writer: %s", err)
 	}
 
-	// Update checksums on s.
-	s.Header.HeaderBlockChecksum = hw.Checksum()
-	s.Header.PageBlockChecksum = pw.Checksum()
+	// Update checksums.
+	s.Header = hw.Header()
 
 	return buf.Bytes(), nil
 }

@@ -29,7 +29,7 @@ func NewPageBlockWriter(w io.Writer, pageN, pageSize uint32) *PageBlockWriter {
 
 // Checksum returns the checksum of the header. Only valid after close.
 func (w *PageBlockWriter) Checksum() uint64 {
-	return w.hash.Sum64()
+	return ChecksumFlag | w.hash.Sum64()
 }
 
 // Size returns the expected number of bytes to be written to the writer.

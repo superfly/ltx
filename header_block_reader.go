@@ -33,7 +33,7 @@ func NewHeaderBlockReader(r io.Reader) *HeaderBlockReader {
 
 // Checksum returns the checksum of the file. Only valid after close.
 func (r *HeaderBlockReader) Checksum() uint64 {
-	return r.hash.Sum64()
+	return ChecksumFlag | r.hash.Sum64()
 }
 
 // Close verifies the reader is at the end of the file and that the checksum matches.
@@ -45,7 +45,7 @@ func (r *HeaderBlockReader) Close() error {
 	}
 
 	// Compare checksum with checksum in header.
-	if r.Checksum() != r.hdr.HeaderBlockChecksum {
+	if chksum := r.Checksum(); chksum != r.hdr.HeaderBlockChecksum {
 		return ErrHeaderBlockChecksumMismatch
 	}
 
@@ -63,8 +63,6 @@ func (r *HeaderBlockReader) ReadHeader(hdr *Header) error {
 	} else if err := hdr.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("unmarshal header frame: %w", err)
 	}
-
-	_, _ = r.hash.Write(b[:HeaderBlockChecksumOffset])
 	r.n += len(b)
 
 	r.hdr = *hdr

@@ -21,7 +21,7 @@ const (
 
 // Header size constants.
 const (
-	HeaderSize      = 92
+	HeaderSize      = 100
 	PageHeaderSize  = 32
 	EventHeaderSize = 32
 )
@@ -30,8 +30,9 @@ const (
 const (
 	ChecksumSize = 8
 
-	HeaderBlockChecksumOffset = HeaderSize - ChecksumSize - ChecksumSize
-	PageBlockChecksumOffset   = HeaderBlockChecksumOffset + ChecksumSize
+	HeaderChecksumOffset      = HeaderSize - ChecksumSize
+	PageBlockChecksumOffset   = HeaderChecksumOffset - ChecksumSize
+	HeaderBlockChecksumOffset = PageBlockChecksumOffset - ChecksumSize
 )
 
 // Errors
@@ -40,8 +41,20 @@ var (
 	ErrReaderClosed = errors.New("reader closed")
 	ErrWriterClosed = errors.New("writer closed")
 
+	ErrNoHeaderChecksum            = errors.New("no header checksum")
+	ErrInvalidHeaderChecksumFormat = errors.New("invalid header checksum format")
+	ErrHeaderChecksumMismatch      = errors.New("header checksum mismatch")
+
 	ErrHeaderBlockChecksumMismatch = errors.New("header block checksum mismatch")
 	ErrPageBlockChecksumMismatch   = errors.New("header page checksum mismatch")
+)
+
+const (
+	// ChecksumFlag is a flag on the checksum to ensure it is non-zero.
+	ChecksumFlag uint64 = 1 << 63
+
+	// ChecksumMask is the mask of the bits used for the page checksum.
+	ChecksumMask uint64 = (1 << 63) - 1
 )
 
 // internal reader/writer states
@@ -70,8 +83,9 @@ type Header struct {
 	Timestamp           uint64 // seconds since unix epoch
 	PreChecksum         uint64 // checksum of database at previous transaction
 	PostChecksum        uint64 // checksum of database after this LTX file is applied
-	HeaderBlockChecksum uint64 // crc64 checksum of header block
+	HeaderBlockChecksum uint64 // crc64 checksum of header block, excluding header
 	PageBlockChecksum   uint64 // crc64 checksum of page block
+	HeaderChecksum      uint64 // crc64 checksum of header
 }
 
 // IsSnapshot returns true if header represents a complete database snapshot.
@@ -90,8 +104,41 @@ func (h *Header) HeaderBlockSize() int64 {
 	return PageAlign(sz, h.PageSize)
 }
 
-// Validate returns an error if h is invalid.
+// Validate returns an error if h is invalid. This checks all fields including
+// calculated fields such as checksums.
 func (h *Header) Validate() error {
+	// Prevalidation checks all fields that are not calculated. This includes
+	// all fields except for most of the checksums.
+	if err := h.Prevalidate(); err != nil {
+		return err
+	}
+
+	if h.PostChecksum == 0 {
+		return fmt.Errorf("post-checksum required")
+	} else if h.PostChecksum&ChecksumFlag == 0 {
+		return fmt.Errorf("invalid post-checksum format")
+	}
+
+	if h.HeaderBlockChecksum == 0 {
+		return fmt.Errorf("header block checksum required")
+	} else if h.HeaderBlockChecksum&ChecksumFlag == 0 {
+		return fmt.Errorf("invalid header block checksum format")
+	}
+
+	if h.PageBlockChecksum == 0 {
+		return fmt.Errorf("page block checksum required")
+	} else if h.PageBlockChecksum&ChecksumFlag == 0 {
+		return fmt.Errorf("invalid page block checksum format")
+	}
+
+	return nil
+}
+
+// Prevalidate returns an error if h is invalid. This function does not check
+// calculated fields, which includes most of the checksums. It is called when
+// initializing a writer so that we can perform basic validation before writing
+// a lot of data.
+func (h *Header) Prevalidate() error {
 	if h.Version != Version {
 		return fmt.Errorf("invalid version")
 	}
@@ -139,15 +186,9 @@ func (h *Header) Validate() error {
 		if h.PreChecksum == 0 {
 			return fmt.Errorf("pre-checksum required on non-snapshot files")
 		}
-		if h.PreChecksum&PageChecksumFlag == 0 {
+		if h.PreChecksum&ChecksumFlag == 0 {
 			return fmt.Errorf("invalid pre-checksum format")
 		}
-	}
-
-	if h.PostChecksum == 0 {
-		return fmt.Errorf("post-checksum required")
-	} else if h.PostChecksum&PageChecksumFlag == 0 {
-		return fmt.Errorf("invalid post-checksum format")
 	}
 
 	return nil
@@ -171,6 +212,13 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint64(b[68:], h.PostChecksum)
 	binary.BigEndian.PutUint64(b[HeaderBlockChecksumOffset:], h.HeaderBlockChecksum)
 	binary.BigEndian.PutUint64(b[PageBlockChecksumOffset:], h.PageBlockChecksum)
+
+	// Checksum entire header.
+	hash := crc64.New(crc64.MakeTable(crc64.ISO))
+	_, _ = hash.Write(b[:HeaderChecksumOffset])
+	h.HeaderChecksum = ChecksumFlag | hash.Sum64()
+	binary.BigEndian.PutUint64(b[HeaderChecksumOffset:], h.HeaderChecksum)
+
 	return b, nil
 }
 
@@ -197,6 +245,23 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.PostChecksum = binary.BigEndian.Uint64(b[68:])
 	h.HeaderBlockChecksum = binary.BigEndian.Uint64(b[HeaderBlockChecksumOffset:])
 	h.PageBlockChecksum = binary.BigEndian.Uint64(b[PageBlockChecksumOffset:])
+	h.HeaderChecksum = binary.BigEndian.Uint64(b[HeaderChecksumOffset:])
+
+	// Ensure header checksum is set.
+	if h.HeaderChecksum == 0 {
+		return ErrNoHeaderChecksum
+	} else if h.HeaderChecksum&ChecksumFlag == 0 {
+		return ErrInvalidHeaderChecksumFormat
+	}
+
+	// Validate checksum of header.
+	hash := crc64.New(crc64.MakeTable(crc64.ISO))
+	_, _ = hash.Write(b[:HeaderChecksumOffset])
+	chksum := ChecksumFlag | hash.Sum64()
+
+	if chksum != h.HeaderChecksum {
+		return ErrHeaderChecksumMismatch
+	}
 
 	return nil
 }
@@ -298,20 +363,12 @@ func PageAlign(v int64, pageSize uint32) int64 {
 	//return v + (int64(pageSize)-(v%int64(pageSize)))
 }
 
-const (
-	// PageChecksumFlag is a flag on the checksum to ensure it is non-zero.
-	PageChecksumFlag uint64 = 1 << 63
-
-	// PageChecksumMask is the mask of the bits used for the page checksum.
-	PageChecksumMask uint64 = (1 << 63) - 1
-)
-
 // ChecksumPage returns a CRC64 checksum that combines the page number & page data.
 func ChecksumPage(pgno uint32, data []byte) uint64 {
 	h := crc64.New(crc64.MakeTable(crc64.ISO))
 	_ = binary.Write(h, binary.BigEndian, pgno)
 	_, _ = h.Write(data)
-	return h.Sum64() & PageChecksumMask
+	return h.Sum64() & ChecksumMask
 }
 
 // FormatTXID returns id formatted as a fixed-width hex number.
