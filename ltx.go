@@ -21,7 +21,7 @@ const (
 
 // Header size constants.
 const (
-	HeaderSize      = 100
+	HeaderSize      = 96
 	PageHeaderSize  = 32
 	EventHeaderSize = 32
 )
@@ -77,7 +77,7 @@ type Header struct {
 	EventN              uint32 // event count in ltx file
 	EventDataSize       uint32 // total size of all event data
 	Commit              uint32 // db size after transaction, in pages
-	DBID                uint64 // database ID
+	DBID                uint32 // database ID
 	MinTXID             uint64 // minimum transaction ID
 	MaxTXID             uint64 // maximum transaction ID
 	Timestamp           uint64 // seconds since unix epoch
@@ -204,12 +204,12 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint32(b[16:], h.EventN)
 	binary.BigEndian.PutUint32(b[20:], h.EventDataSize)
 	binary.BigEndian.PutUint32(b[24:], h.Commit)
-	binary.BigEndian.PutUint64(b[28:], h.DBID)
-	binary.BigEndian.PutUint64(b[36:], h.MinTXID)
-	binary.BigEndian.PutUint64(b[44:], h.MaxTXID)
-	binary.BigEndian.PutUint64(b[52:], h.Timestamp)
-	binary.BigEndian.PutUint64(b[60:], h.PreChecksum)
-	binary.BigEndian.PutUint64(b[68:], h.PostChecksum)
+	binary.BigEndian.PutUint32(b[28:], h.DBID)
+	binary.BigEndian.PutUint64(b[32:], h.MinTXID)
+	binary.BigEndian.PutUint64(b[40:], h.MaxTXID)
+	binary.BigEndian.PutUint64(b[48:], h.Timestamp)
+	binary.BigEndian.PutUint64(b[56:], h.PreChecksum)
+	binary.BigEndian.PutUint64(b[64:], h.PostChecksum)
 	binary.BigEndian.PutUint64(b[HeaderBlockChecksumOffset:], h.HeaderBlockChecksum)
 	binary.BigEndian.PutUint64(b[PageBlockChecksumOffset:], h.PageBlockChecksum)
 
@@ -237,12 +237,12 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.EventN = binary.BigEndian.Uint32(b[16:])
 	h.EventDataSize = binary.BigEndian.Uint32(b[20:])
 	h.Commit = binary.BigEndian.Uint32(b[24:])
-	h.DBID = binary.BigEndian.Uint64(b[28:])
-	h.MinTXID = binary.BigEndian.Uint64(b[36:])
-	h.MaxTXID = binary.BigEndian.Uint64(b[44:])
-	h.Timestamp = binary.BigEndian.Uint64(b[52:])
-	h.PreChecksum = binary.BigEndian.Uint64(b[60:])
-	h.PostChecksum = binary.BigEndian.Uint64(b[68:])
+	h.DBID = binary.BigEndian.Uint32(b[28:])
+	h.MinTXID = binary.BigEndian.Uint64(b[32:])
+	h.MaxTXID = binary.BigEndian.Uint64(b[40:])
+	h.Timestamp = binary.BigEndian.Uint64(b[48:])
+	h.PreChecksum = binary.BigEndian.Uint64(b[56:])
+	h.PostChecksum = binary.BigEndian.Uint64(b[64:])
 	h.HeaderBlockChecksum = binary.BigEndian.Uint64(b[HeaderBlockChecksumOffset:])
 	h.PageBlockChecksum = binary.BigEndian.Uint64(b[PageBlockChecksumOffset:])
 	h.HeaderChecksum = binary.BigEndian.Uint64(b[HeaderChecksumOffset:])
