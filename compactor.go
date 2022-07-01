@@ -84,14 +84,16 @@ func (c *Compactor) writeToOutputFile(inputFiles []*compactionInputFile, filenam
 
 	// Generate output header.
 	hdr := Header{
-		Version:   Version,
-		PageSize:  inputFiles[0].hdr.PageSize,
-		PageN:     pageN,
-		Commit:    inputFiles[len(inputFiles)-1].hdr.Commit,
-		DBID:      inputFiles[0].hdr.DBID,
-		MinTXID:   inputFiles[0].hdr.MinTXID,
-		MaxTXID:   inputFiles[len(inputFiles)-1].hdr.MaxTXID,
-		Timestamp: inputFiles[0].hdr.Timestamp,
+		Version:      Version,
+		PageSize:     inputFiles[0].hdr.PageSize,
+		PageN:        pageN,
+		Commit:       inputFiles[len(inputFiles)-1].hdr.Commit,
+		DBID:         inputFiles[0].hdr.DBID,
+		MinTXID:      inputFiles[0].hdr.MinTXID,
+		MaxTXID:      inputFiles[len(inputFiles)-1].hdr.MaxTXID,
+		Timestamp:    inputFiles[0].hdr.Timestamp,
+		PreChecksum:  inputFiles[0].hdr.PreChecksum,
+		PostChecksum: inputFiles[len(inputFiles)-1].hdr.PostChecksum,
 	}
 
 	// Determine event info if events are included in the output file.

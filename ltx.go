@@ -21,7 +21,7 @@ const (
 
 // Header size constants.
 const (
-	HeaderSize      = 76
+	HeaderSize      = 92
 	PageHeaderSize  = 32
 	EventHeaderSize = 32
 )
@@ -68,6 +68,8 @@ type Header struct {
 	MinTXID             uint64 // minimum transaction ID
 	MaxTXID             uint64 // maximum transaction ID
 	Timestamp           uint64 // seconds since unix epoch
+	PreChecksum         uint64 // checksum of database at previous transaction
+	PostChecksum        uint64 // checksum of database after this LTX file is applied
 	HeaderBlockChecksum uint64 // crc64 checksum of header block
 	PageBlockChecksum   uint64 // crc64 checksum of page block
 }
@@ -92,29 +94,62 @@ func (h *Header) HeaderBlockSize() int64 {
 func (h *Header) Validate() error {
 	if h.Version != Version {
 		return fmt.Errorf("invalid version")
-	} else if !IsValidHeaderFlags(h.Flags) {
-		return fmt.Errorf("invalid flags: 0x%08x", h.Flags)
-	} else if !IsValidPageSize(h.PageSize) {
-		return fmt.Errorf("invalid page size: %d", h.PageSize)
-	} else if h.PageN == 0 {
-		return fmt.Errorf("page count required")
-	} else if h.Commit == 0 {
-		return fmt.Errorf("commit record required")
-	} else if h.EventN == 0 && h.EventDataSize != 0 {
-		return fmt.Errorf("event data size must be zero if no events exist")
-	} else if h.EventN != 0 && h.EventDataSize == 0 {
-		return fmt.Errorf("event data size must be specified if events exist")
-	} else if h.DBID == 0 {
-		return fmt.Errorf("database id required")
-	} else if h.MinTXID == 0 {
-		return fmt.Errorf("minimum transaction id required")
-	} else if h.MaxTXID == 0 {
-		return fmt.Errorf("maximum transaction id required")
-	} else if h.MinTXID > h.MaxTXID {
-		return fmt.Errorf("transaction ids out of order: (%d,%d)", h.MinTXID, h.MaxTXID)
-	} else if h.IsSnapshot() && h.PageN < h.Commit {
-		return fmt.Errorf("snapshot page count %d must equal commit size %d", h.PageN, h.Commit)
 	}
+	if !IsValidHeaderFlags(h.Flags) {
+		return fmt.Errorf("invalid flags: 0x%08x", h.Flags)
+	}
+	if !IsValidPageSize(h.PageSize) {
+		return fmt.Errorf("invalid page size: %d", h.PageSize)
+	}
+	if h.PageN == 0 {
+		return fmt.Errorf("page count required")
+	}
+	if h.Commit == 0 {
+		return fmt.Errorf("commit record required")
+	}
+	if h.EventN == 0 && h.EventDataSize != 0 {
+		return fmt.Errorf("event data size must be zero if no events exist")
+	}
+	if h.EventN != 0 && h.EventDataSize == 0 {
+		return fmt.Errorf("event data size must be specified if events exist")
+	}
+	if h.DBID == 0 {
+		return fmt.Errorf("database id required")
+	}
+	if h.MinTXID == 0 {
+		return fmt.Errorf("minimum transaction id required")
+	}
+	if h.MaxTXID == 0 {
+		return fmt.Errorf("maximum transaction id required")
+	}
+	if h.MinTXID > h.MaxTXID {
+		return fmt.Errorf("transaction ids out of order: (%d,%d)", h.MinTXID, h.MaxTXID)
+	}
+
+	// Snapshots are LTX files which have a minimum TXID of 1. This means they
+	// must have all database pages included in them and they have no previous checksum.
+	if h.IsSnapshot() {
+		if h.PreChecksum != 0 {
+			return fmt.Errorf("pre-checksum must be zero on snapshots")
+		}
+		if h.PageN < h.Commit {
+			return fmt.Errorf("snapshot page count %d must equal commit size %d", h.PageN, h.Commit)
+		}
+	} else {
+		if h.PreChecksum == 0 {
+			return fmt.Errorf("pre-checksum required on non-snapshot files")
+		}
+		if h.PreChecksum&PageChecksumFlag == 0 {
+			return fmt.Errorf("invalid pre-checksum format")
+		}
+	}
+
+	if h.PostChecksum == 0 {
+		return fmt.Errorf("post-checksum required")
+	} else if h.PostChecksum&PageChecksumFlag == 0 {
+		return fmt.Errorf("invalid post-checksum format")
+	}
+
 	return nil
 }
 
@@ -132,6 +167,8 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint64(b[36:], h.MinTXID)
 	binary.BigEndian.PutUint64(b[44:], h.MaxTXID)
 	binary.BigEndian.PutUint64(b[52:], h.Timestamp)
+	binary.BigEndian.PutUint64(b[60:], h.PreChecksum)
+	binary.BigEndian.PutUint64(b[68:], h.PostChecksum)
 	binary.BigEndian.PutUint64(b[HeaderBlockChecksumOffset:], h.HeaderBlockChecksum)
 	binary.BigEndian.PutUint64(b[PageBlockChecksumOffset:], h.PageBlockChecksum)
 	return b, nil
@@ -156,6 +193,8 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.MinTXID = binary.BigEndian.Uint64(b[36:])
 	h.MaxTXID = binary.BigEndian.Uint64(b[44:])
 	h.Timestamp = binary.BigEndian.Uint64(b[52:])
+	h.PreChecksum = binary.BigEndian.Uint64(b[60:])
+	h.PostChecksum = binary.BigEndian.Uint64(b[68:])
 	h.HeaderBlockChecksum = binary.BigEndian.Uint64(b[HeaderBlockChecksumOffset:])
 	h.PageBlockChecksum = binary.BigEndian.Uint64(b[PageBlockChecksumOffset:])
 
@@ -259,12 +298,20 @@ func PageAlign(v int64, pageSize uint32) int64 {
 	//return v + (int64(pageSize)-(v%int64(pageSize)))
 }
 
+const (
+	// PageChecksumFlag is a flag on the checksum to ensure it is non-zero.
+	PageChecksumFlag uint64 = 1 << 63
+
+	// PageChecksumMask is the mask of the bits used for the page checksum.
+	PageChecksumMask uint64 = (1 << 63) - 1
+)
+
 // ChecksumPage returns a CRC64 checksum that combines the page number & page data.
 func ChecksumPage(pgno uint32, data []byte) uint64 {
 	h := crc64.New(crc64.MakeTable(crc64.ISO))
 	_ = binary.Write(h, binary.BigEndian, pgno)
 	_, _ = h.Write(data)
-	return h.Sum64()
+	return h.Sum64() & PageChecksumMask
 }
 
 // FormatTXID returns id formatted as a fixed-width hex number.

@@ -14,7 +14,7 @@ import (
 
 func TestHeader_Validate(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 2, DBID: 1, MinTXID: 3, MaxTXID: 4}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 2, DBID: 1, MinTXID: 3, MaxTXID: 4, PreChecksum: ltx.PageChecksumFlag, PostChecksum: ltx.PageChecksumFlag}
 		if err := hdr.Validate(); err != nil {
 			t.Fatal(err)
 		}
@@ -82,6 +82,36 @@ func TestHeader_Validate(t *testing.T) {
 	t.Run("ErrTXIDOutOfOrderRequired", func(t *testing.T) {
 		hdr := ltx.Header{Version: 1, PageSize: 1024, PageN: 1, Commit: 2, DBID: 1, MinTXID: 3, MaxTXID: 2}
 		if err := hdr.Validate(); err == nil || err.Error() != `transaction ids out of order: (3,2)` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrSnapshotPreChecksumNotAllowed", func(t *testing.T) {
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageN: 3, Commit: 4, DBID: 1, MinTXID: 1, MaxTXID: 3, PreChecksum: 1}
+		if err := hdr.Validate(); err == nil || err.Error() != `pre-checksum must be zero on snapshots` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrNonSnapshotPreChecksumRequired", func(t *testing.T) {
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageN: 3, Commit: 4, DBID: 1, MinTXID: 2, MaxTXID: 3}
+		if err := hdr.Validate(); err == nil || err.Error() != `pre-checksum required on non-snapshot files` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrInvalidPreChecksumFormat", func(t *testing.T) {
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageN: 3, Commit: 4, DBID: 1, MinTXID: 2, MaxTXID: 3, PreChecksum: 1}
+		if err := hdr.Validate(); err == nil || err.Error() != `invalid pre-checksum format` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrPostChecksumRequired", func(t *testing.T) {
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageN: 3, Commit: 4, DBID: 1, MinTXID: 2, MaxTXID: 3, PreChecksum: ltx.PageChecksumFlag}
+		if err := hdr.Validate(); err == nil || err.Error() != `post-checksum required` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrInvalidPostChecksumFormat", func(t *testing.T) {
+		hdr := ltx.Header{Version: 1, PageSize: 1024, PageN: 3, Commit: 4, DBID: 1, MinTXID: 2, MaxTXID: 3, PreChecksum: ltx.PageChecksumFlag, PostChecksum: 1}
+		if err := hdr.Validate(); err == nil || err.Error() != `invalid post-checksum format` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
