@@ -19,20 +19,17 @@ const (
 	Version = 1
 )
 
-// Header size constants.
+// Size constants.
 const (
-	HeaderSize      = 96
-	PageHeaderSize  = 32
-	EventHeaderSize = 32
+	HeaderSize     = 52
+	PageHeaderSize = 4
+	TrailerSize    = 16
 )
 
 // Checksum size & positions.
 const (
-	ChecksumSize = 8
-
-	HeaderChecksumOffset      = HeaderSize - ChecksumSize
-	PageBlockChecksumOffset   = HeaderChecksumOffset - ChecksumSize
-	HeaderBlockChecksumOffset = PageBlockChecksumOffset - ChecksumSize
+	ChecksumSize          = 8
+	TrailerChecksumOffset = TrailerSize - ChecksumSize
 )
 
 // Errors
@@ -41,12 +38,9 @@ var (
 	ErrReaderClosed = errors.New("reader closed")
 	ErrWriterClosed = errors.New("writer closed")
 
-	ErrNoHeaderChecksum            = errors.New("no header checksum")
-	ErrInvalidHeaderChecksumFormat = errors.New("invalid header checksum format")
-	ErrHeaderChecksumMismatch      = errors.New("header checksum mismatch")
-
-	ErrHeaderBlockChecksumMismatch = errors.New("header block checksum mismatch")
-	ErrPageBlockChecksumMismatch   = errors.New("header page checksum mismatch")
+	ErrNoChecksum            = errors.New("no file checksum")
+	ErrInvalidChecksumFormat = errors.New("invalid file checksum format")
+	ErrChecksumMismatch      = errors.New("file checksum mismatch")
 )
 
 const (
@@ -59,33 +53,23 @@ const (
 
 // internal reader/writer states
 const (
-	stateHeader      = "header"
-	stateEventHeader = "event header"
-	stateEventData   = "event data"
-	statePageHeader  = "page header"
-	statePageData    = "page data"
-	stateClose       = "close"
-	stateClosed      = "closed"
+	stateHeader = "header"
+	statePage   = "page"
+	stateClose  = "close"
+	stateClosed = "closed"
 )
 
 // Header represents the header frame of an LTX file.
 type Header struct {
-	Version             int    // based on magic
-	Flags               uint32 // reserved flags
-	PageSize            uint32 // page size, in bytes
-	PageN               uint32 // page count in ltx file
-	EventN              uint32 // event count in ltx file
-	EventDataSize       uint32 // total size of all event data
-	Commit              uint32 // db size after transaction, in pages
-	DBID                uint32 // database ID
-	MinTXID             uint64 // minimum transaction ID
-	MaxTXID             uint64 // maximum transaction ID
-	Timestamp           uint64 // seconds since unix epoch
-	PreChecksum         uint64 // checksum of database at previous transaction
-	PostChecksum        uint64 // checksum of database after this LTX file is applied
-	HeaderBlockChecksum uint64 // crc64 checksum of header block, excluding header
-	PageBlockChecksum   uint64 // crc64 checksum of page block
-	HeaderChecksum      uint64 // crc64 checksum of header
+	Version          int    // based on magic
+	Flags            uint32 // reserved flags
+	PageSize         uint32 // page size, in bytes
+	Commit           uint32 // db size after transaction, in pages
+	DBID             uint32 // database ID
+	MinTXID          uint64 // minimum transaction ID
+	MaxTXID          uint64 // maximum transaction ID
+	Timestamp        uint64 // seconds since unix epoch
+	PreApplyChecksum uint64 // rolling checksum of database before applying this LTX file
 }
 
 // IsSnapshot returns true if header represents a complete database snapshot.
@@ -95,50 +79,8 @@ func (h *Header) IsSnapshot() bool {
 	return h.MinTXID == 1
 }
 
-// HeaderBlockSize returns the total size of the header block, in bytes.
-// Must be a valid header frame.
-func (h *Header) HeaderBlockSize() int64 {
-	sz := HeaderSize +
-		(int64(h.PageN) * PageHeaderSize) +
-		(int64(h.EventN) * EventHeaderSize) + int64(h.EventDataSize)
-	return PageAlign(sz, h.PageSize)
-}
-
-// Validate returns an error if h is invalid. This checks all fields including
-// calculated fields such as checksums.
+// Validate returns an error if h is invalid.
 func (h *Header) Validate() error {
-	// Prevalidation checks all fields that are not calculated. This includes
-	// all fields except for most of the checksums.
-	if err := h.Prevalidate(); err != nil {
-		return err
-	}
-
-	if h.PostChecksum == 0 {
-		return fmt.Errorf("post-checksum required")
-	} else if h.PostChecksum&ChecksumFlag == 0 {
-		return fmt.Errorf("invalid post-checksum format")
-	}
-
-	if h.HeaderBlockChecksum == 0 {
-		return fmt.Errorf("header block checksum required")
-	} else if h.HeaderBlockChecksum&ChecksumFlag == 0 {
-		return fmt.Errorf("invalid header block checksum format")
-	}
-
-	if h.PageBlockChecksum == 0 {
-		return fmt.Errorf("page block checksum required")
-	} else if h.PageBlockChecksum&ChecksumFlag == 0 {
-		return fmt.Errorf("invalid page block checksum format")
-	}
-
-	return nil
-}
-
-// Prevalidate returns an error if h is invalid. This function does not check
-// calculated fields, which includes most of the checksums. It is called when
-// initializing a writer so that we can perform basic validation before writing
-// a lot of data.
-func (h *Header) Prevalidate() error {
 	if h.Version != Version {
 		return fmt.Errorf("invalid version")
 	}
@@ -148,17 +90,8 @@ func (h *Header) Prevalidate() error {
 	if !IsValidPageSize(h.PageSize) {
 		return fmt.Errorf("invalid page size: %d", h.PageSize)
 	}
-	if h.PageN == 0 {
-		return fmt.Errorf("page count required")
-	}
 	if h.Commit == 0 {
 		return fmt.Errorf("commit record required")
-	}
-	if h.EventN == 0 && h.EventDataSize != 0 {
-		return fmt.Errorf("event data size must be zero if no events exist")
-	}
-	if h.EventN != 0 && h.EventDataSize == 0 {
-		return fmt.Errorf("event data size must be specified if events exist")
 	}
 	if h.DBID == 0 {
 		return fmt.Errorf("database id required")
@@ -176,18 +109,15 @@ func (h *Header) Prevalidate() error {
 	// Snapshots are LTX files which have a minimum TXID of 1. This means they
 	// must have all database pages included in them and they have no previous checksum.
 	if h.IsSnapshot() {
-		if h.PreChecksum != 0 {
-			return fmt.Errorf("pre-checksum must be zero on snapshots")
-		}
-		if h.PageN < h.Commit {
-			return fmt.Errorf("snapshot page count %d must equal commit size %d", h.PageN, h.Commit)
+		if h.PreApplyChecksum != 0 {
+			return fmt.Errorf("pre-apply checksum must be zero on snapshots")
 		}
 	} else {
-		if h.PreChecksum == 0 {
-			return fmt.Errorf("pre-checksum required on non-snapshot files")
+		if h.PreApplyChecksum == 0 {
+			return fmt.Errorf("pre-apply checksum required on non-snapshot files")
 		}
-		if h.PreChecksum&ChecksumFlag == 0 {
-			return fmt.Errorf("invalid pre-checksum format")
+		if h.PreApplyChecksum&ChecksumFlag == 0 {
+			return fmt.Errorf("invalid pre-apply checksum format")
 		}
 	}
 
@@ -200,25 +130,12 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	copy(b[0:4], Magic)
 	binary.BigEndian.PutUint32(b[4:], h.Flags)
 	binary.BigEndian.PutUint32(b[8:], h.PageSize)
-	binary.BigEndian.PutUint32(b[12:], h.PageN)
-	binary.BigEndian.PutUint32(b[16:], h.EventN)
-	binary.BigEndian.PutUint32(b[20:], h.EventDataSize)
-	binary.BigEndian.PutUint32(b[24:], h.Commit)
-	binary.BigEndian.PutUint32(b[28:], h.DBID)
-	binary.BigEndian.PutUint64(b[32:], h.MinTXID)
-	binary.BigEndian.PutUint64(b[40:], h.MaxTXID)
-	binary.BigEndian.PutUint64(b[48:], h.Timestamp)
-	binary.BigEndian.PutUint64(b[56:], h.PreChecksum)
-	binary.BigEndian.PutUint64(b[64:], h.PostChecksum)
-	binary.BigEndian.PutUint64(b[HeaderBlockChecksumOffset:], h.HeaderBlockChecksum)
-	binary.BigEndian.PutUint64(b[PageBlockChecksumOffset:], h.PageBlockChecksum)
-
-	// Checksum entire header.
-	hash := crc64.New(crc64.MakeTable(crc64.ISO))
-	_, _ = hash.Write(b[:HeaderChecksumOffset])
-	h.HeaderChecksum = ChecksumFlag | hash.Sum64()
-	binary.BigEndian.PutUint64(b[HeaderChecksumOffset:], h.HeaderChecksum)
-
+	binary.BigEndian.PutUint32(b[12:], h.Commit)
+	binary.BigEndian.PutUint32(b[16:], h.DBID)
+	binary.BigEndian.PutUint64(b[20:], h.MinTXID)
+	binary.BigEndian.PutUint64(b[28:], h.MaxTXID)
+	binary.BigEndian.PutUint64(b[36:], h.Timestamp)
+	binary.BigEndian.PutUint64(b[44:], h.PreApplyChecksum)
 	return b, nil
 }
 
@@ -233,35 +150,12 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.Version = Version
 	h.Flags = binary.BigEndian.Uint32(b[4:])
 	h.PageSize = binary.BigEndian.Uint32(b[8:])
-	h.PageN = binary.BigEndian.Uint32(b[12:])
-	h.EventN = binary.BigEndian.Uint32(b[16:])
-	h.EventDataSize = binary.BigEndian.Uint32(b[20:])
-	h.Commit = binary.BigEndian.Uint32(b[24:])
-	h.DBID = binary.BigEndian.Uint32(b[28:])
-	h.MinTXID = binary.BigEndian.Uint64(b[32:])
-	h.MaxTXID = binary.BigEndian.Uint64(b[40:])
-	h.Timestamp = binary.BigEndian.Uint64(b[48:])
-	h.PreChecksum = binary.BigEndian.Uint64(b[56:])
-	h.PostChecksum = binary.BigEndian.Uint64(b[64:])
-	h.HeaderBlockChecksum = binary.BigEndian.Uint64(b[HeaderBlockChecksumOffset:])
-	h.PageBlockChecksum = binary.BigEndian.Uint64(b[PageBlockChecksumOffset:])
-	h.HeaderChecksum = binary.BigEndian.Uint64(b[HeaderChecksumOffset:])
-
-	// Ensure header checksum is set.
-	if h.HeaderChecksum == 0 {
-		return ErrNoHeaderChecksum
-	} else if h.HeaderChecksum&ChecksumFlag == 0 {
-		return ErrInvalidHeaderChecksumFormat
-	}
-
-	// Validate checksum of header.
-	hash := crc64.New(crc64.MakeTable(crc64.ISO))
-	_, _ = hash.Write(b[:HeaderChecksumOffset])
-	chksum := ChecksumFlag | hash.Sum64()
-
-	if chksum != h.HeaderChecksum {
-		return ErrHeaderChecksumMismatch
-	}
+	h.Commit = binary.BigEndian.Uint32(b[12:])
+	h.DBID = binary.BigEndian.Uint32(b[16:])
+	h.MinTXID = binary.BigEndian.Uint64(b[20:])
+	h.MaxTXID = binary.BigEndian.Uint64(b[28:])
+	h.Timestamp = binary.BigEndian.Uint64(b[36:])
+	h.PreApplyChecksum = binary.BigEndian.Uint64(b[44:])
 
 	return nil
 }
@@ -269,6 +163,47 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 // IsValidHeaderFlags returns true if flags are unset. Flags are reserved.
 func IsValidHeaderFlags(flags uint32) bool {
 	return flags == 0
+}
+
+// Trailer represents the ending frame of an LTX file.
+type Trailer struct {
+	PostApplyChecksum uint64 // rolling checksum of database after this LTX file is applied
+	FileChecksum      uint64 // crc64 checksum of entire file
+}
+
+// Validate returns an error if t is invalid.
+func (t *Trailer) Validate() error {
+	if t.PostApplyChecksum == 0 {
+		return fmt.Errorf("post-apply checksum required")
+	} else if t.PostApplyChecksum&ChecksumFlag == 0 {
+		return fmt.Errorf("invalid post-checksum format")
+	}
+
+	if t.FileChecksum == 0 {
+		return fmt.Errorf("file checksum required")
+	} else if t.FileChecksum&ChecksumFlag == 0 {
+		return fmt.Errorf("invalid file checksum format")
+	}
+	return nil
+}
+
+// MarshalBinary encodes h to a byte slice.
+func (t *Trailer) MarshalBinary() ([]byte, error) {
+	b := make([]byte, TrailerSize)
+	binary.BigEndian.PutUint64(b[0:], t.PostApplyChecksum)
+	binary.BigEndian.PutUint64(b[8:], t.FileChecksum)
+	return b, nil
+}
+
+// UnmarshalBinary decodes h from a byte slice.
+func (t *Trailer) UnmarshalBinary(b []byte) error {
+	if len(b) < TrailerSize {
+		return io.ErrShortBuffer
+	}
+
+	t.PostApplyChecksum = binary.BigEndian.Uint64(b[0:])
+	t.FileChecksum = binary.BigEndian.Uint64(b[8:])
+	return nil
 }
 
 // IsValidPageSize returns true if sz is between 512 and 64K and a power of two.
@@ -281,47 +216,14 @@ func IsValidPageSize(sz uint32) bool {
 	return false
 }
 
-// EventHeader represents the header for a single event frame in an LTX file.
-type EventHeader struct {
-	Size  uint32
-	Nonce [12]byte
-	Tag   [16]byte
-}
-
-// Validate returns an error if h is invalid.
-func (h *EventHeader) Validate() error {
-	if h.Size == 0 {
-		return fmt.Errorf("size required")
-	}
-	return nil
-}
-
-// MarshalBinary encodes h to a byte slice.
-func (h *EventHeader) MarshalBinary() ([]byte, error) {
-	b := make([]byte, EventHeaderSize)
-	binary.BigEndian.PutUint32(b[0:], h.Size)
-	copy(b[4:], h.Nonce[:])
-	copy(b[16:], h.Tag[:])
-	return b, nil
-}
-
-// UnmarshalBinary decodes h from a byte slice.
-func (h *EventHeader) UnmarshalBinary(b []byte) error {
-	if len(b) < EventHeaderSize {
-		return io.ErrShortBuffer
-	}
-
-	h.Size = binary.BigEndian.Uint32(b[0:])
-	copy(h.Nonce[:], b[4:])
-	copy(h.Tag[:], b[16:])
-	return nil
-}
-
 // PageHeader represents the header for a single page in an LTX file.
 type PageHeader struct {
-	Pgno  uint32
-	Nonce [12]byte
-	Tag   [16]byte
+	Pgno uint32
+}
+
+// IsZero returns true if the header is empty.
+func (h *PageHeader) IsZero() bool {
+	return *h == (PageHeader{})
 }
 
 // Validate returns an error if h is invalid.
@@ -336,8 +238,6 @@ func (h *PageHeader) Validate() error {
 func (h *PageHeader) MarshalBinary() ([]byte, error) {
 	b := make([]byte, PageHeaderSize)
 	binary.BigEndian.PutUint32(b[0:], h.Pgno)
-	copy(b[4:], h.Nonce[:])
-	copy(b[16:], h.Tag[:])
 	return b, nil
 }
 
@@ -348,19 +248,7 @@ func (h *PageHeader) UnmarshalBinary(b []byte) error {
 	}
 
 	h.Pgno = binary.BigEndian.Uint32(b[0:])
-	copy(h.Nonce[:], b[4:])
-	copy(h.Tag[:], b[16:])
 	return nil
-}
-
-// PageAlign returns v if it a multiple of pageSize.
-// Otherwise returns next multiple of pageSize.
-func PageAlign(v int64, pageSize uint32) int64 {
-	return int64((uint64(v) + uint64(pageSize) - 1) &^ (uint64(pageSize) - 1))
-	//if v %int64(pageSize) {
-	//	return v
-	//}
-	//return v + (int64(pageSize)-(v%int64(pageSize)))
 }
 
 // ChecksumPage returns a CRC64 checksum that combines the page number & page data.
@@ -392,7 +280,7 @@ func ParseFilename(name string) (minTXID, maxTXID uint64, err error) {
 	}
 
 	minTXID, _ = strconv.ParseUint(a[1], 16, 64)
-	maxTXID, err = strconv.ParseUint(a[2], 16, 64)
+	maxTXID, _ = strconv.ParseUint(a[2], 16, 64)
 	return minTXID, maxTXID, nil
 }
 
