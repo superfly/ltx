@@ -42,9 +42,10 @@ func (s *FileSpec) ReadFrom(src io.Reader) (n int, err error) {
 	r := NewReader(src)
 
 	// Read header frame and initialize spec slices to correct size.
-	if err := r.ReadHeader(&s.Header); err != nil {
+	if err := r.ReadHeader(); err != nil {
 		return 0, fmt.Errorf("read header: %s", err)
 	}
+	s.Header = r.Header()
 
 	// Read page frames.
 	for {

@@ -30,9 +30,8 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 	}
 
 	// Read headers from all inputs.
-	var hdr Header
 	for _, input := range c.inputs {
-		if err := input.r.ReadHeader(&hdr); err != nil {
+		if err := input.r.ReadHeader(); err != nil {
 			return
 		}
 	}

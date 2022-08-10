@@ -75,21 +75,20 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-// ReadHeader returns the LTX file header frame.
-func (r *Reader) ReadHeader(hdr *Header) error {
+// ReadHeader reads the LTX file header frame and stores it internally.
+// Call Header() to retrieve the header after this is successfully called.
+func (r *Reader) ReadHeader() error {
 	b := make([]byte, HeaderSize)
 	if _, err := io.ReadFull(r.r, b); err != nil {
 		return err
-	} else if err := hdr.UnmarshalBinary(b); err != nil {
+	} else if err := r.header.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("unmarshal header: %w", err)
 	}
 
 	r.writeToHash(b)
-
-	r.header = *hdr
 	r.state = statePage
 
-	return hdr.Validate()
+	return r.header.Validate()
 }
 
 // ReadPage reads the next page header into hdr and associated page data.
@@ -131,6 +130,29 @@ func (r *Reader) ReadPage(hdr *PageHeader, data []byte) error {
 	r.writeToHash(data)
 
 	return nil
+}
+
+// Verify reads the entire file and returns the header & trailer.
+// All page data is discarded.
+func (r *Reader) Verify() (Header, Trailer, error) {
+	if err := r.ReadHeader(); err != nil {
+		return Header{}, Trailer{}, fmt.Errorf("read header: %w", err)
+	}
+
+	var pageHeader PageHeader
+	data := make([]byte, r.header.PageSize)
+	for i := 0; ; i++ {
+		if err := r.ReadPage(&pageHeader, data); err == io.EOF {
+			break
+		} else if err != nil {
+			return Header{}, Trailer{}, fmt.Errorf("read page %d: %w", i, err)
+		}
+	}
+
+	if err := r.Close(); err != nil {
+		return Header{}, Trailer{}, fmt.Errorf("close reader: %w", err)
+	}
+	return r.header, r.trailer, nil
 }
 
 func (r *Reader) writeToHash(b []byte) {

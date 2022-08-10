@@ -44,10 +44,9 @@ func TestReader(t *testing.T) {
 		r := ltx.NewReader(&buf)
 
 		// Verify header.
-		var hdr ltx.Header
-		if err := r.ReadHeader(&hdr); err != nil {
+		if err := r.ReadHeader(); err != nil {
 			t.Fatal(err)
-		} else if got, want := hdr, spec.Header; !reflect.DeepEqual(got, want) {
+		} else if got, want := r.Header(), spec.Header; !reflect.DeepEqual(got, want) {
 			t.Fatalf("header mismatch:\ngot=%#v\nwant=%#v", got, want)
 		}
 
