@@ -206,9 +206,12 @@ func (t *Trailer) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
+// MaxPageSize is the maximum allowed page size for SQLite.
+const MaxPageSize = 65536
+
 // IsValidPageSize returns true if sz is between 512 and 64K and a power of two.
 func IsValidPageSize(sz uint32) bool {
-	for i := uint32(512); i <= 65536; i *= 2 {
+	for i := uint32(512); i <= MaxPageSize; i *= 2 {
 		if sz == i {
 			return true
 		}
