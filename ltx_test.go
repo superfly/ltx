@@ -224,6 +224,28 @@ func TestParseFilename(t *testing.T) {
 	})
 }
 
+func TestChecksumReader(t *testing.T) {
+	t.Run("OK", func(t *testing.T) {
+		r := io.MultiReader(
+			bytes.NewReader(bytes.Repeat([]byte("\x01"), 512)),
+			bytes.NewReader(bytes.Repeat([]byte("\x02"), 512)),
+			bytes.NewReader(bytes.Repeat([]byte("\x03"), 512)),
+		)
+		if chksum, err := ltx.ChecksumReader(r, 512); err != nil {
+			t.Fatal(err)
+		} else if got, want := chksum, uint64(0xefffffffecd99000); got != want {
+			t.Fatalf("got=%x, want %x", got, want)
+		}
+	})
+
+	t.Run("ErrUnexpectedEOF", func(t *testing.T) {
+		r := bytes.NewReader(bytes.Repeat([]byte("\x01"), 512))
+		if _, err := ltx.ChecksumReader(r, 1024); err != io.ErrUnexpectedEOF {
+			t.Fatal(err)
+		}
+	})
+}
+
 // createFile creates a file and returns the file handle. Closes on cleanup.
 func createFile(tb testing.TB, name string) *os.File {
 	tb.Helper()
