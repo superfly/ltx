@@ -9,16 +9,16 @@ import (
 
 // Compactor represents a compactor of LTX files.
 type Compactor struct {
-	w      *Writer
+	enc    *Encoder
 	inputs []*compactorInput
 }
 
 // NewCompactor returns a new instance of Compactor with default settings.
 func NewCompactor(w io.Writer, rdrs []io.Reader) *Compactor {
-	c := &Compactor{w: NewWriter(w)}
+	c := &Compactor{enc: NewEncoder(w)}
 	c.inputs = make([]*compactorInput, len(rdrs))
 	for i := range c.inputs {
-		c.inputs[i] = &compactorInput{r: NewReader(rdrs[i])}
+		c.inputs[i] = &compactorInput{dec: NewDecoder(rdrs[i])}
 	}
 	return c
 }
@@ -31,20 +31,20 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 
 	// Read headers from all inputs.
 	for _, input := range c.inputs {
-		if err := input.r.ReadHeader(); err != nil {
+		if err := input.dec.DecodeHeader(); err != nil {
 			return
 		}
 	}
 
 	// Sort inputs by transaction ID.
 	sort.Slice(c.inputs, func(i, j int) bool {
-		return c.inputs[i].r.Header().MinTXID < c.inputs[j].r.Header().MaxTXID
+		return c.inputs[i].dec.Header().MinTXID < c.inputs[j].dec.Header().MaxTXID
 	})
 
 	// Validate that reader page sizes match & TXIDs are contiguous.
 	for i := 1; i < len(c.inputs); i++ {
-		prevHdr := c.inputs[i-1].r.Header()
-		hdr := c.inputs[i].r.Header()
+		prevHdr := c.inputs[i-1].dec.Header()
+		hdr := c.inputs[i].dec.Header()
 
 		if prevHdr.DBID != hdr.DBID {
 			return fmt.Errorf("input files have mismatched database ids: %d != %d", prevHdr.DBID, hdr.DBID)
@@ -61,11 +61,11 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 	}
 
 	// Fetch the first and last headers from the sorted readers.
-	minHdr := c.inputs[0].r.Header()
-	maxHdr := c.inputs[len(c.inputs)-1].r.Header()
+	minHdr := c.inputs[0].dec.Header()
+	maxHdr := c.inputs[len(c.inputs)-1].dec.Header()
 
 	// Generate output header.
-	if err := c.w.WriteHeader(Header{
+	if err := c.enc.EncodeHeader(Header{
 		Version:          Version,
 		PageSize:         minHdr.PageSize,
 		Commit:           maxHdr.Commit,
@@ -85,15 +85,15 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 
 	// Close readers to ensure they're valid.
 	for i, input := range c.inputs {
-		if err := input.r.Close(); err != nil {
+		if err := input.dec.Close(); err != nil {
 			return fmt.Errorf("close reader %d: %w", i, err)
 		}
 	}
 
-	// Close writer.
-	c.w.SetPostApplyChecksum(c.inputs[len(c.inputs)-1].r.Trailer().PostApplyChecksum)
-	if err := c.w.Close(); err != nil {
-		return fmt.Errorf("close writer: %w", err)
+	// Close encoder.
+	c.enc.SetPostApplyChecksum(c.inputs[len(c.inputs)-1].dec.Trailer().PostApplyChecksum)
+	if err := c.enc.Close(); err != nil {
+		return fmt.Errorf("close encoder: %w", err)
 	}
 
 	return nil
@@ -102,7 +102,7 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 func (c *Compactor) writePageBlock(ctx context.Context) error {
 	// Allocate buffers.
 	for _, input := range c.inputs {
-		input.buf.data = make([]byte, c.w.Header().PageSize)
+		input.buf.data = make([]byte, c.enc.Header().PageSize)
 	}
 
 	// Iterate over readers and merge together.
@@ -131,7 +131,7 @@ func (c *Compactor) fillPageBuffers(ctx context.Context) (pgno uint32, err error
 
 		// Fill buffer if it is empty.
 		if input.buf.hdr.IsZero() {
-			if err := input.r.ReadPage(&input.buf.hdr, input.buf.data); err == io.EOF {
+			if err := input.dec.DecodePage(&input.buf.hdr, input.buf.data); err == io.EOF {
 				continue // end of page block
 			} else if err != nil {
 				return 0, fmt.Errorf("read page header %d: %w", i, err)
@@ -159,7 +159,7 @@ func (c *Compactor) writePageBuffer(ctx context.Context, pgno uint32) error {
 		// If page number has not been written yet, copy from input file.
 		if !pageWritten {
 			pageWritten = true
-			if err := c.w.WritePage(input.buf.hdr, input.buf.data); err != nil {
+			if err := c.enc.EncodePage(input.buf.hdr, input.buf.data); err != nil {
 				return fmt.Errorf("copy page %d header: %w", pgno, err)
 			}
 		}
@@ -172,7 +172,7 @@ func (c *Compactor) writePageBuffer(ctx context.Context, pgno uint32) error {
 }
 
 type compactorInput struct {
-	r   *Reader
+	dec *Decoder
 	buf struct {
 		hdr  PageHeader
 		data []byte

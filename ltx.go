@@ -34,9 +34,9 @@ const (
 
 // Errors
 var (
-	ErrInvalidFile  = errors.New("invalid LTX file")
-	ErrReaderClosed = errors.New("reader closed")
-	ErrWriterClosed = errors.New("writer closed")
+	ErrInvalidFile   = errors.New("invalid LTX file")
+	ErrDecoderClosed = errors.New("ltx decoder closed")
+	ErrEncoderClosed = errors.New("ltx encoder closed")
 
 	ErrNoChecksum            = errors.New("no file checksum")
 	ErrInvalidChecksumFormat = errors.New("invalid file checksum format")
