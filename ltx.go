@@ -259,6 +259,22 @@ func ChecksumPage(pgno uint32, data []byte) uint64 {
 	return h.Sum64() & ChecksumMask
 }
 
+// ChecksumReader reads an entire database file from r and computes its rolling checksum.
+func ChecksumReader(r io.Reader, pageSize int) (uint64, error) {
+	data := make([]byte, pageSize)
+
+	var chksum uint64
+	for pgno := uint32(1); ; pgno++ {
+		if _, err := io.ReadFull(r, data); err == io.EOF {
+			break
+		} else if err != nil {
+			return chksum, err
+		}
+		chksum ^= ChecksumPage(pgno, data)
+	}
+	return ChecksumFlag | chksum, nil
+}
+
 // FormatTXID returns id formatted as a fixed-width hex number.
 func FormatTXID(id uint64) string {
 	return fmt.Sprintf("%016x", id)
