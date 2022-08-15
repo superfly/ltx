@@ -21,7 +21,7 @@ const (
 
 // Size constants.
 const (
-	HeaderSize     = 52
+	HeaderSize     = 100
 	PageHeaderSize = 4
 	TrailerSize    = 16
 )

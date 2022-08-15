@@ -30,12 +30,13 @@ check.
 | 0      | 4    | Magic number. Always "LTX1".            |
 | 4      | 4    | Flags. Reserved. Always 0.              |
 | 8      | 4    | Page size, in bytes.                    |
-| 12     | 4    | Page count.                             |
-| 16     | 4    | Size of DB after transaction, in pages. |
-| 0      | 8    | Minimum transaction ID.                 |
-| 0      | 8    | Maximum transaction ID.                 |
-| 0      | 8    | Timestamp (seconds since Unix epoch)    |
-| 0      | 8    | Pre-apply DB checksum (CRC-ISO-64)      |
+| 12     | 4    | Size of DB after transaction, in pages. |
+| 16     | 4    | Database ID.                            |
+| 20     | 8    | Minimum transaction ID.                 |
+| 28     | 8    | Maximum transaction ID.                 |
+| 36     | 8    | Timestamp (Milliseconds since epoch)    |
+| 44     | 8    | Pre-apply DB checksum (CRC-ISO-64)      |
+| 52     | 48   | Reserved.                               |
 
 
 #### Page block
@@ -45,9 +46,7 @@ This block stores a series of page headers and page data.
 | Offset | Size | Description                 |
 | -------| ---- | --------------------------- |
 | 0      | 4    | Page number.                |
-| 4      | 12   | AES-GCM nonce.              |
-| 16     | 16   | AES-GCM authentication tag. |
-| 32     | ...  | Page data.                  |
+| 4      | N    | Page data.                  |
 
 
 #### Trailer
@@ -58,8 +57,7 @@ itself.
 
 | Offset | Size | Description                             |
 | -------| ---- | --------------------------------------- |
-| 0      | 8    | File checksum (CRC-ISO-64)              |
-| 8      | 8    | Post-apply DB checksum (CRC-ISO-64)     |
-| 16     | 8    | Trailer checksum (CRC-ISO-64)           |
+| 0      | 8    | Post-apply DB checksum (CRC-ISO-64)     |
+| 8      | 8    | File checksum (CRC-ISO-64)              |
 
 
