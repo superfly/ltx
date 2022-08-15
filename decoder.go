@@ -37,11 +37,6 @@ func (dec *Decoder) Header() Header { return dec.header }
 // Trailer returns a copy of the trailer. File checksum available after Close().
 func (dec *Decoder) Trailer() Trailer { return dec.trailer }
 
-// Checksum returns the checksum of the file. Only valid after close.
-func (dec *Decoder) Checksum() uint64 {
-	return ChecksumFlag | dec.hash.Sum64()
-}
-
 // Close verifies the reader is at the end of the file and that the checksum matches.
 func (dec *Decoder) Close() error {
 	if dec.state == stateClosed {
@@ -61,7 +56,7 @@ func (dec *Decoder) Close() error {
 	dec.writeToHash(b[:TrailerChecksumOffset])
 
 	// Compare checksum with checksum in trailer.
-	if chksum := dec.Checksum(); chksum != dec.trailer.FileChecksum {
+	if chksum := ChecksumFlag | dec.hash.Sum64(); chksum != dec.trailer.FileChecksum {
 		return ErrChecksumMismatch
 	}
 

@@ -12,6 +12,7 @@ import (
 type Reader struct {
 	r     io.Reader
 	state string
+	buf   []byte // header buffer
 
 	header  Header
 	trailer Trailer
@@ -27,9 +28,40 @@ func NewReader(r io.Reader) *Reader {
 	}
 }
 
+// Header returns a copy of the header. Available after DecodeHeader().
+func (r *Reader) Header() Header { return r.header }
+
+// Trailer returns a copy of the trailer. Available after Close().
+func (r *Reader) Trailer() Trailer { return r.trailer }
+
+// PeekHeader reads the header into a buffer and allows the caller to inspect it.
+func (r *Reader) PeekHeader() error {
+	if r.state != stateHeader {
+		return fmt.Errorf("ltx header already read")
+	}
+
+	buf := make([]byte, HeaderSize)
+	_, err := r.Read(buf)
+	r.buf = buf
+	return err
+}
+
 // Read reads bytes from the underlying reader into p.
 // Returns io.ErrShortBuffer if len(p) is less than the size of the page frame.
 func (r *Reader) Read(p []byte) (n int, err error) {
+	// Use the temporary buffer if set. This is used for peeking at the header.
+	if r.buf != nil {
+		if len(p) < len(r.buf) {
+			return 0, io.ErrShortBuffer
+		}
+
+		// Copy and remove buffer.
+		n := len(r.buf)
+		copy(p[:n], r.buf[:n])
+		r.buf = nil
+		return n, nil
+	}
+
 	switch r.state {
 	case stateHeader:
 		return r.readHeader(p)
