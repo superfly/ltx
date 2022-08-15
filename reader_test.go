@@ -48,6 +48,43 @@ func TestReader(t *testing.T) {
 		}
 	})
 
+	t.Run("PeekHeader", func(t *testing.T) {
+		t.Run("OK", func(t *testing.T) {
+			var dst bytes.Buffer
+			r := ltx.NewReader(bytes.NewReader(src))
+			if err := r.PeekHeader(); err != nil {
+				t.Fatal(err)
+			} else if got, want := r.Header(), (ltx.Header{
+				Version:   1,
+				PageSize:  1024,
+				Commit:    2,
+				DBID:      1,
+				MinTXID:   1,
+				MaxTXID:   1,
+				Timestamp: 1000,
+			}); got != want {
+				t.Fatalf("header=%#v, want %#v", got, want)
+			}
+
+			if n, err := io.Copy(&dst, r); err != nil {
+				t.Fatal(err)
+			} else if got, want := int(n), len(src); got != want {
+				t.Fatalf("n=%d, want %d", got, want)
+			} else if got, want := dst.Len(), len(src); got != want {
+				t.Fatalf("dst.Len()=%d, want %d", got, want)
+			}
+		})
+
+		t.Run("ErrShortBuffer", func(t *testing.T) {
+			r := ltx.NewReader(bytes.NewReader(src))
+			if err := r.PeekHeader(); err != nil {
+				t.Fatal(err)
+			} else if _, err := r.Read(make([]byte, 10)); err != io.ErrShortBuffer {
+				t.Fatalf("unexpected error: %s", err)
+			}
+		})
+	})
+
 	t.Run("Header", func(t *testing.T) {
 		t.Run("ErrShortBuffer", func(t *testing.T) {
 			buf := make([]byte, 1028)
