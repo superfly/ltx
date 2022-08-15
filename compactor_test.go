@@ -247,12 +247,12 @@ func TestCompactor_Compact(t *testing.T) {
 				Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 1},
 			},
 			&ltx.FileSpec{
-				Header:  ltx.Header{Version: 1, PageSize: 1024, Commit: 1, DBID: 1, MinTXID: 2, MaxTXID: 2, Timestamp: 1000, PreApplyChecksum: ltx.ChecksumFlag | 2},
+				Header:  ltx.Header{Version: 1, PageSize: 1024, Commit: 1, DBID: 1, MinTXID: 4, MaxTXID: 4, Timestamp: 1000, PreApplyChecksum: ltx.ChecksumFlag | 2},
 				Pages:   []ltx.PageSpec{{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x91}, 1024)}},
 				Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 1},
 			},
 		)
-		if err == nil || err.Error() != `non-contiguous transaction ids in input files: 1-2,2` {
+		if err == nil || err.Error() != `non-contiguous transaction ids in input files: (0000000000000001,0000000000000002) -> (0000000000000004,0000000000000004)` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})

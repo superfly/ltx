@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math"
 	"os"
 	"reflect"
 	"testing"
@@ -241,6 +242,104 @@ func TestChecksumReader(t *testing.T) {
 	t.Run("ErrUnexpectedEOF", func(t *testing.T) {
 		r := bytes.NewReader(bytes.Repeat([]byte("\x01"), 512))
 		if _, err := ltx.ChecksumReader(r, 1024); err != io.ErrUnexpectedEOF {
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestFormatDBID(t *testing.T) {
+	if got, want := ltx.FormatDBID(0), "00000000"; got != want {
+		t.Fatalf("got=%q, want %q", got, want)
+	}
+	if got, want := ltx.FormatDBID(1000), "000003e8"; got != want {
+		t.Fatalf("got=%q, want %q", got, want)
+	}
+	if got, want := ltx.FormatDBID(math.MaxUint32), "ffffffff"; got != want {
+		t.Fatalf("got=%q, want %q", got, want)
+	}
+}
+
+func TestParseDBID(t *testing.T) {
+	t.Run("OK", func(t *testing.T) {
+		if v, err := ltx.ParseDBID("00000000"); err != nil {
+			t.Fatal(err)
+		} else if got, want := v, uint32(0); got != want {
+			t.Fatalf("got=%d, want %d", got, want)
+		}
+
+		if v, err := ltx.ParseDBID("000003e8"); err != nil {
+			t.Fatal(err)
+		} else if got, want := v, uint32(1000); got != want {
+			t.Fatalf("got=%d, want %d", got, want)
+		}
+
+		if v, err := ltx.ParseDBID("ffffffff"); err != nil {
+			t.Fatal(err)
+		} else if got, want := v, uint32(math.MaxUint32); got != want {
+			t.Fatalf("got=%d, want %d", got, want)
+		}
+	})
+	t.Run("ErrTooShort", func(t *testing.T) {
+		if _, err := ltx.ParseDBID("0e38"); err == nil || err.Error() != `invalid formatted database id length: "0e38"` {
+			t.Fatal(err)
+		}
+	})
+	t.Run("ErrTooLong", func(t *testing.T) {
+		if _, err := ltx.ParseDBID("ffffffff0"); err == nil || err.Error() != `invalid formatted database id length: "ffffffff0"` {
+			t.Fatal(err)
+		}
+	})
+	t.Run("ErrInvalidFormat", func(t *testing.T) {
+		if _, err := ltx.ParseDBID("xxxxxxxx"); err == nil || err.Error() != `invalid database id format: "xxxxxxxx"` {
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestFormatTXID(t *testing.T) {
+	if got, want := ltx.FormatTXID(0), "0000000000000000"; got != want {
+		t.Fatalf("got=%q, want %q", got, want)
+	}
+	if got, want := ltx.FormatTXID(1000), "00000000000003e8"; got != want {
+		t.Fatalf("got=%q, want %q", got, want)
+	}
+	if got, want := ltx.FormatTXID(math.MaxUint64), "ffffffffffffffff"; got != want {
+		t.Fatalf("got=%q, want %q", got, want)
+	}
+}
+
+func TestParseTXID(t *testing.T) {
+	t.Run("OK", func(t *testing.T) {
+		if v, err := ltx.ParseTXID("0000000000000000"); err != nil {
+			t.Fatal(err)
+		} else if got, want := v, uint64(0); got != want {
+			t.Fatalf("got=%d, want %d", got, want)
+		}
+
+		if v, err := ltx.ParseTXID("00000000000003e8"); err != nil {
+			t.Fatal(err)
+		} else if got, want := v, uint64(1000); got != want {
+			t.Fatalf("got=%d, want %d", got, want)
+		}
+
+		if v, err := ltx.ParseTXID("ffffffffffffffff"); err != nil {
+			t.Fatal(err)
+		} else if got, want := v, uint64(math.MaxUint64); got != want {
+			t.Fatalf("got=%d, want %d", got, want)
+		}
+	})
+	t.Run("ErrTooShort", func(t *testing.T) {
+		if _, err := ltx.ParseTXID("000000000e38"); err == nil || err.Error() != `invalid formatted transaction id length: "000000000e38"` {
+			t.Fatal(err)
+		}
+	})
+	t.Run("ErrTooLong", func(t *testing.T) {
+		if _, err := ltx.ParseTXID("ffffffffffffffff0"); err == nil || err.Error() != `invalid formatted transaction id length: "ffffffffffffffff0"` {
+			t.Fatal(err)
+		}
+	})
+	t.Run("ErrInvalidFormat", func(t *testing.T) {
+		if _, err := ltx.ParseTXID("xxxxxxxxxxxxxxxx"); err == nil || err.Error() != `invalid transaction id format: "xxxxxxxxxxxxxxxx"` {
 			t.Fatal(err)
 		}
 	})

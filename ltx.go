@@ -278,17 +278,38 @@ func ChecksumReader(r io.Reader, pageSize int) (uint64, error) {
 	return ChecksumFlag | chksum, nil
 }
 
+// FormatDBID formats id as a 16-character hex string.
+func FormatDBID(id uint32) string {
+	return fmt.Sprintf("%08x", id)
+}
+
+// ParseDBID parses a 8-character hex string into a database ID.
+func ParseDBID(s string) (uint32, error) {
+	if len(s) != 8 {
+		return 0, fmt.Errorf("invalid formatted database id length: %q", s)
+	}
+	v, err := strconv.ParseUint(s, 16, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid database id format: %q", s)
+	}
+	return uint32(v), nil
+}
+
 // FormatTXID returns id formatted as a fixed-width hex number.
 func FormatTXID(id uint64) string {
 	return fmt.Sprintf("%016x", id)
 }
 
-// FormatTXIDRange returns min & max formatted as a single number if equal or a range if different.
-func FormatTXIDRange(min, max uint64) string {
-	if min == max {
-		return fmt.Sprintf("%d", min)
+// ParseTXID parses a 16-character hex string into a transaction ID.
+func ParseTXID(s string) (uint64, error) {
+	if len(s) != 16 {
+		return 0, fmt.Errorf("invalid formatted transaction id length: %q", s)
 	}
-	return fmt.Sprintf("%d-%d", min, max)
+	v, err := strconv.ParseUint(s, 16, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid transaction id format: %q", s)
+	}
+	return uint64(v), nil
 }
 
 // ParseFilename parses a transaction range from an LTX file.

@@ -53,9 +53,9 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 			return fmt.Errorf("input files have mismatched page sizes: %d != %d", prevHdr.PageSize, hdr.PageSize)
 		}
 		if prevHdr.MaxTXID+1 != hdr.MinTXID {
-			return fmt.Errorf("non-contiguous transaction ids in input files: %s,%s",
-				FormatTXIDRange(prevHdr.MinTXID, prevHdr.MaxTXID),
-				FormatTXIDRange(hdr.MinTXID, hdr.MaxTXID),
+			return fmt.Errorf("non-contiguous transaction ids in input files: (%s,%s) -> (%s,%s)",
+				FormatTXID(prevHdr.MinTXID), FormatTXID(prevHdr.MaxTXID),
+				FormatTXID(hdr.MinTXID), FormatTXID(hdr.MaxTXID),
 			)
 		}
 	}
