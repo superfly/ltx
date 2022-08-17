@@ -1,4 +1,4 @@
-Ltx Transaction File (LTX)
+Lite Transaction File (LTX)
 =================================
 
 The LTX file format provides a way to store SQLite transactional data in
