@@ -1,0 +1,98 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+
+	"github.com/superfly/ltx"
+)
+
+// DumpCommand represents a command to print the contents of a single LTX file.
+type DumpCommand struct{}
+
+// NewDumpCommand returns a new instance of DumpCommand.
+func NewDumpCommand() *DumpCommand {
+	return &DumpCommand{}
+}
+
+// Run executes the command.
+func (c *DumpCommand) Run(ctx context.Context, args []string) (ret error) {
+	fs := flag.NewFlagSet("ltx-dump", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Println(`
+The dump command writes out all data for a single LTX file.
+
+Usage:
+
+	ltx dump [arguments] PATH
+
+Arguments:
+
+`[1:])
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return err
+	} else if fs.NArg() == 0 {
+		return fmt.Errorf("filename required")
+	} else if fs.NArg() > 1 {
+		return fmt.Errorf("too many arguments")
+	}
+
+	f, err := os.Open(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	dec := ltx.NewDecoder(f)
+
+	// Read & print header information.
+	err = dec.DecodeHeader()
+	hdr := dec.Header()
+	fmt.Printf("# HEADER\n")
+	fmt.Printf("Version:   %d\n", hdr.Version)
+	fmt.Printf("Flags:     0x%08x\n", hdr.Flags)
+	fmt.Printf("Page size: %d\n", hdr.PageSize)
+	fmt.Printf("Commit:    %d\n", hdr.Commit)
+	fmt.Printf("DBID:      %s (%d)\n", ltx.FormatDBID(hdr.DBID), hdr.DBID)
+	fmt.Printf("Min TXID:  %s (%d)\n", ltx.FormatTXID(hdr.MinTXID), hdr.MinTXID)
+	fmt.Printf("Max TXID:  %s (%d)\n", ltx.FormatTXID(hdr.MaxTXID), hdr.MaxTXID)
+	fmt.Printf("Timestamp: %d\n", hdr.Timestamp)
+	fmt.Printf("Pre-apply: %016x\n", hdr.PreApplyChecksum)
+	fmt.Printf("\n")
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("# PAGE DATA\n")
+	for i := 0; ; i++ {
+		var pageHeader ltx.PageHeader
+		data := make([]byte, hdr.PageSize)
+		if err := dec.DecodePage(&pageHeader, data); err == io.EOF {
+			break
+		} else if err != nil {
+			return fmt.Errorf("decode page frame %d: %w", i, err)
+		}
+
+		fmt.Printf("Frame #%d: pgno=%d\n", i, pageHeader.Pgno)
+	}
+	fmt.Printf("\n")
+
+	// Close & verify file, print trailer.
+	err = dec.Close()
+	trailer := dec.Trailer()
+
+	fmt.Printf("# TRAILER\n")
+	fmt.Printf("Post-apply:    %016x\n", trailer.PostApplyChecksum)
+	fmt.Printf("File Checksum: %016x\n", trailer.FileChecksum)
+	fmt.Printf("\n")
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
