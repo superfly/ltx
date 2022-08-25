@@ -143,11 +143,8 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 func (h *Header) UnmarshalBinary(b []byte) error {
 	if len(b) < HeaderSize {
 		return io.ErrShortBuffer
-	} else if string(b[0:4]) != Magic {
-		return ErrInvalidFile
 	}
 
-	h.Version = Version
 	h.Flags = binary.BigEndian.Uint32(b[4:])
 	h.PageSize = binary.BigEndian.Uint32(b[8:])
 	h.Commit = binary.BigEndian.Uint32(b[12:])
@@ -156,6 +153,11 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.MaxTXID = binary.BigEndian.Uint64(b[28:])
 	h.Timestamp = binary.BigEndian.Uint64(b[36:])
 	h.PreApplyChecksum = binary.BigEndian.Uint64(b[44:])
+
+	if string(b[0:4]) != Magic {
+		return ErrInvalidFile
+	}
+	h.Version = Version
 
 	return nil
 }
