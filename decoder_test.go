@@ -16,7 +16,6 @@ func TestDecoder(t *testing.T) {
 				Version:   1,
 				PageSize:  1024,
 				Commit:    2,
-				DBID:      1,
 				MinTXID:   1,
 				MaxTXID:   1,
 				Timestamp: 1000,

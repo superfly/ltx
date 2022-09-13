@@ -65,7 +65,6 @@ type Header struct {
 	Flags            uint32 // reserved flags
 	PageSize         uint32 // page size, in bytes
 	Commit           uint32 // db size after transaction, in pages
-	DBID             uint32 // database ID
 	MinTXID          uint64 // minimum transaction ID
 	MaxTXID          uint64 // maximum transaction ID
 	Timestamp        uint64 // seconds since unix epoch
@@ -92,9 +91,6 @@ func (h *Header) Validate() error {
 	}
 	if h.Commit == 0 {
 		return fmt.Errorf("commit record required")
-	}
-	if h.DBID == 0 {
-		return fmt.Errorf("database id required")
 	}
 	if h.MinTXID == 0 {
 		return fmt.Errorf("minimum transaction id required")
@@ -131,11 +127,10 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint32(b[4:], h.Flags)
 	binary.BigEndian.PutUint32(b[8:], h.PageSize)
 	binary.BigEndian.PutUint32(b[12:], h.Commit)
-	binary.BigEndian.PutUint32(b[16:], h.DBID)
-	binary.BigEndian.PutUint64(b[20:], h.MinTXID)
-	binary.BigEndian.PutUint64(b[28:], h.MaxTXID)
-	binary.BigEndian.PutUint64(b[36:], h.Timestamp)
-	binary.BigEndian.PutUint64(b[44:], h.PreApplyChecksum)
+	binary.BigEndian.PutUint64(b[16:], h.MinTXID)
+	binary.BigEndian.PutUint64(b[24:], h.MaxTXID)
+	binary.BigEndian.PutUint64(b[32:], h.Timestamp)
+	binary.BigEndian.PutUint64(b[40:], h.PreApplyChecksum)
 	return b, nil
 }
 
@@ -148,11 +143,10 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.Flags = binary.BigEndian.Uint32(b[4:])
 	h.PageSize = binary.BigEndian.Uint32(b[8:])
 	h.Commit = binary.BigEndian.Uint32(b[12:])
-	h.DBID = binary.BigEndian.Uint32(b[16:])
-	h.MinTXID = binary.BigEndian.Uint64(b[20:])
-	h.MaxTXID = binary.BigEndian.Uint64(b[28:])
-	h.Timestamp = binary.BigEndian.Uint64(b[36:])
-	h.PreApplyChecksum = binary.BigEndian.Uint64(b[44:])
+	h.MinTXID = binary.BigEndian.Uint64(b[16:])
+	h.MaxTXID = binary.BigEndian.Uint64(b[24:])
+	h.Timestamp = binary.BigEndian.Uint64(b[32:])
+	h.PreApplyChecksum = binary.BigEndian.Uint64(b[40:])
 
 	if string(b[0:4]) != Magic {
 		return ErrInvalidFile
@@ -278,23 +272,6 @@ func ChecksumReader(r io.Reader, pageSize int) (uint64, error) {
 		chksum ^= ChecksumPage(pgno, data)
 	}
 	return ChecksumFlag | chksum, nil
-}
-
-// FormatDBID formats id as a 16-character hex string.
-func FormatDBID(id uint32) string {
-	return fmt.Sprintf("%08x", id)
-}
-
-// ParseDBID parses a 8-character hex string into a database ID.
-func ParseDBID(s string) (uint32, error) {
-	if len(s) != 8 {
-		return 0, fmt.Errorf("invalid formatted database id length: %q", s)
-	}
-	v, err := strconv.ParseUint(s, 16, 32)
-	if err != nil {
-		return 0, fmt.Errorf("invalid database id format: %q", s)
-	}
-	return uint32(v), nil
 }
 
 // FormatTXID returns id formatted as a fixed-width hex number.

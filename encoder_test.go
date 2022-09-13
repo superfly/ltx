@@ -21,7 +21,6 @@ func TestEncoder(t *testing.T) {
 			Version:          1,
 			PageSize:         4096,
 			Commit:           3,
-			DBID:             4,
 			MinTXID:          5,
 			MaxTXID:          6,
 			Timestamp:        2000,
@@ -62,7 +61,7 @@ func TestEncode_Close(t *testing.T) {
 
 	t.Run("ErrClosed", func(t *testing.T) {
 		enc := ltx.NewEncoder(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
 		} else if err := enc.EncodePage(ltx.PageHeader{Pgno: 1}, make([]byte, 1024)); err != nil {
 			t.Fatal(err)
@@ -82,7 +81,7 @@ func TestEncode_Close(t *testing.T) {
 func TestEncode_EncodeHeader(t *testing.T) {
 	t.Run("ErrInvalidState", func(t *testing.T) {
 		enc := ltx.NewEncoder(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
 		}
 		if err := enc.EncodeHeader(ltx.Header{}); err == nil || err.Error() != `cannot encode header frame, expected page` {
@@ -101,7 +100,7 @@ func TestEncode_EncodePage(t *testing.T) {
 
 	t.Run("ErrPageNumberRequired", func(t *testing.T) {
 		enc := ltx.NewEncoder(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
 		} else if err := enc.EncodePage(ltx.PageHeader{Pgno: 0}, nil); err == nil || err.Error() != `page number required` {
 			t.Fatalf("unexpected error: %s", err)
@@ -110,7 +109,7 @@ func TestEncode_EncodePage(t *testing.T) {
 
 	t.Run("ErrPageNumberOutOfBounds", func(t *testing.T) {
 		enc := ltx.NewEncoder(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 4, DBID: 1, MinTXID: 2, MaxTXID: 2, PreApplyChecksum: ltx.ChecksumFlag | 2}); err != nil {
+		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 4, MinTXID: 2, MaxTXID: 2, PreApplyChecksum: ltx.ChecksumFlag | 2}); err != nil {
 			t.Fatal(err)
 		} else if err := enc.EncodePage(ltx.PageHeader{Pgno: 5}, nil); err == nil || err.Error() != `page number 5 out-of-bounds for commit size 4` {
 			t.Fatalf("unexpected error: %s", err)
@@ -119,7 +118,7 @@ func TestEncode_EncodePage(t *testing.T) {
 
 	t.Run("ErrSnapshotInitialPage", func(t *testing.T) {
 		enc := ltx.NewEncoder(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 2, DBID: 1, MinTXID: 1, MaxTXID: 2}); err != nil {
+		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 2}); err != nil {
 			t.Fatal(err)
 		} else if err := enc.EncodePage(ltx.PageHeader{Pgno: 2}, make([]byte, 1024)); err == nil || err.Error() != `snapshot transaction file must start with page number 1` {
 			t.Fatalf("unexpected error: %s", err)
@@ -128,7 +127,7 @@ func TestEncode_EncodePage(t *testing.T) {
 
 	t.Run("ErrSnapshotNonsequentialPages", func(t *testing.T) {
 		enc := ltx.NewEncoder(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 3, DBID: 1, MinTXID: 1, MaxTXID: 1}); err != nil {
+		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 3, MinTXID: 1, MaxTXID: 1}); err != nil {
 			t.Fatal(err)
 		}
 		if err := enc.EncodePage(ltx.PageHeader{Pgno: 1}, make([]byte, 1024)); err != nil {
@@ -142,7 +141,7 @@ func TestEncode_EncodePage(t *testing.T) {
 
 	t.Run("ErrOutOfOrderPages", func(t *testing.T) {
 		enc := ltx.NewEncoder(createFile(t, filepath.Join(t.TempDir(), "ltx")))
-		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 2, DBID: 1, MinTXID: 2, MaxTXID: 2, PreApplyChecksum: ltx.ChecksumFlag | 2}); err != nil {
+		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 2, MaxTXID: 2, PreApplyChecksum: ltx.ChecksumFlag | 2}); err != nil {
 			t.Fatal(err)
 		}
 		if err := enc.EncodePage(ltx.PageHeader{Pgno: 2}, make([]byte, 1024)); err != nil {
