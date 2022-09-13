@@ -58,7 +58,6 @@ Arguments:
 	fmt.Printf("Flags:     0x%08x\n", hdr.Flags)
 	fmt.Printf("Page size: %d\n", hdr.PageSize)
 	fmt.Printf("Commit:    %d\n", hdr.Commit)
-	fmt.Printf("DBID:      %s (%d)\n", ltx.FormatDBID(hdr.DBID), hdr.DBID)
 	fmt.Printf("Min TXID:  %s (%d)\n", ltx.FormatTXID(hdr.MinTXID), hdr.MinTXID)
 	fmt.Printf("Max TXID:  %s (%d)\n", ltx.FormatTXID(hdr.MaxTXID), hdr.MaxTXID)
 	fmt.Printf("Timestamp: %d\n", hdr.Timestamp)

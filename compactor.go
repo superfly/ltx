@@ -46,9 +46,6 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 		prevHdr := c.inputs[i-1].dec.Header()
 		hdr := c.inputs[i].dec.Header()
 
-		if prevHdr.DBID != hdr.DBID {
-			return fmt.Errorf("input files have mismatched database ids: %d != %d", prevHdr.DBID, hdr.DBID)
-		}
 		if prevHdr.PageSize != hdr.PageSize {
 			return fmt.Errorf("input files have mismatched page sizes: %d != %d", prevHdr.PageSize, hdr.PageSize)
 		}
@@ -69,7 +66,6 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 		Version:          Version,
 		PageSize:         minHdr.PageSize,
 		Commit:           maxHdr.Commit,
-		DBID:             minHdr.DBID,
 		MinTXID:          minHdr.MinTXID,
 		MaxTXID:          maxHdr.MaxTXID,
 		Timestamp:        minHdr.Timestamp,

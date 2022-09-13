@@ -16,7 +16,6 @@ func TestCompactor_Compact(t *testing.T) {
 				Version:          1,
 				PageSize:         512,
 				Commit:           1,
-				DBID:             1,
 				MinTXID:          1,
 				MaxTXID:          1,
 				Timestamp:        1000,
@@ -54,7 +53,6 @@ func TestCompactor_Compact(t *testing.T) {
 					Version:   1,
 					PageSize:  1024,
 					Commit:    3,
-					DBID:      1,
 					MinTXID:   1,
 					MaxTXID:   1,
 					Timestamp: 1000,
@@ -73,7 +71,6 @@ func TestCompactor_Compact(t *testing.T) {
 					Version:          1,
 					PageSize:         1024,
 					Commit:           3,
-					DBID:             1,
 					MinTXID:          2,
 					MaxTXID:          2,
 					Timestamp:        2000,
@@ -97,7 +94,6 @@ func TestCompactor_Compact(t *testing.T) {
 				Version:   1,
 				PageSize:  1024,
 				Commit:    3,
-				DBID:      1,
 				MinTXID:   1,
 				MaxTXID:   2,
 				Timestamp: 1000,
@@ -109,7 +105,7 @@ func TestCompactor_Compact(t *testing.T) {
 			},
 			Trailer: ltx.Trailer{
 				PostApplyChecksum: ltx.ChecksumFlag | 2,
-				FileChecksum:      0x89c4c1cfef192c6a,
+				FileChecksum:      0xa67e07c7914f91ed,
 			},
 		})
 	})
@@ -120,7 +116,6 @@ func TestCompactor_Compact(t *testing.T) {
 					Version:          1,
 					PageSize:         1024,
 					Commit:           3,
-					DBID:             1,
 					MinTXID:          2,
 					MaxTXID:          3,
 					Timestamp:        1000,
@@ -137,7 +132,6 @@ func TestCompactor_Compact(t *testing.T) {
 				Header: ltx.Header{Version: 1,
 					PageSize:         1024,
 					Commit:           3,
-					DBID:             1,
 					MinTXID:          4,
 					MaxTXID:          5,
 					Timestamp:        2000,
@@ -155,7 +149,6 @@ func TestCompactor_Compact(t *testing.T) {
 					Version:          1,
 					PageSize:         1024,
 					Commit:           5,
-					DBID:             1,
 					MinTXID:          6,
 					MaxTXID:          9,
 					Timestamp:        3000,
@@ -180,7 +173,6 @@ func TestCompactor_Compact(t *testing.T) {
 				Version:          1,
 				PageSize:         1024,
 				Commit:           5,
-				DBID:             1,
 				MinTXID:          2,
 				MaxTXID:          9,
 				Timestamp:        1000,
@@ -194,7 +186,7 @@ func TestCompactor_Compact(t *testing.T) {
 			},
 			Trailer: ltx.Trailer{
 				PostApplyChecksum: ltx.ChecksumFlag | 9,
-				FileChecksum:      0x9acba8a91b489889,
+				FileChecksum:      0xdf64da57d1e8e39f,
 			},
 		})
 	})
@@ -205,32 +197,15 @@ func TestCompactor_Compact(t *testing.T) {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
-	t.Run("ErrDBIDMismatch", func(t *testing.T) {
-		_, err := compactFileSpecs(t,
-			&ltx.FileSpec{
-				Header:  ltx.Header{Version: 1, PageSize: 1024, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000},
-				Pages:   []ltx.PageSpec{{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x81}, 1024)}},
-				Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 1},
-			},
-			&ltx.FileSpec{
-				Header:  ltx.Header{Version: 1, PageSize: 1024, Commit: 1, DBID: 2, MinTXID: 1, MaxTXID: 1, Timestamp: 1000},
-				Pages:   []ltx.PageSpec{{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x91}, 1024)}},
-				Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 1},
-			},
-		)
-		if err == nil || err.Error() != `input files have mismatched database ids: 1 != 2` {
-			t.Fatalf("unexpected error: %s", err)
-		}
-	})
 	t.Run("ErrPageSizeMismatch", func(t *testing.T) {
 		_, err := compactFileSpecs(t,
 			&ltx.FileSpec{
-				Header:  ltx.Header{Version: 1, PageSize: 512, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000},
+				Header:  ltx.Header{Version: 1, PageSize: 512, Commit: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000},
 				Pages:   []ltx.PageSpec{{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x81}, 512)}},
 				Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 1},
 			},
 			&ltx.FileSpec{
-				Header:  ltx.Header{Version: 1, PageSize: 1024, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000},
+				Header:  ltx.Header{Version: 1, PageSize: 1024, Commit: 1, MinTXID: 1, MaxTXID: 1, Timestamp: 1000},
 				Pages:   []ltx.PageSpec{{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x91}, 1024)}},
 				Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 1},
 			},
@@ -242,12 +217,12 @@ func TestCompactor_Compact(t *testing.T) {
 	t.Run("ErrNonContiguousTXID", func(t *testing.T) {
 		_, err := compactFileSpecs(t,
 			&ltx.FileSpec{
-				Header:  ltx.Header{Version: 1, PageSize: 1024, Commit: 1, DBID: 1, MinTXID: 1, MaxTXID: 2, Timestamp: 1000},
+				Header:  ltx.Header{Version: 1, PageSize: 1024, Commit: 1, MinTXID: 1, MaxTXID: 2, Timestamp: 1000},
 				Pages:   []ltx.PageSpec{{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x81}, 1024)}},
 				Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 1},
 			},
 			&ltx.FileSpec{
-				Header:  ltx.Header{Version: 1, PageSize: 1024, Commit: 1, DBID: 1, MinTXID: 4, MaxTXID: 4, Timestamp: 1000, PreApplyChecksum: ltx.ChecksumFlag | 2},
+				Header:  ltx.Header{Version: 1, PageSize: 1024, Commit: 1, MinTXID: 4, MaxTXID: 4, Timestamp: 1000, PreApplyChecksum: ltx.ChecksumFlag | 2},
 				Pages:   []ltx.PageSpec{{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x91}, 1024)}},
 				Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 1},
 			},

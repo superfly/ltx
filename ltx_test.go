@@ -18,7 +18,6 @@ func TestHeader_Validate(t *testing.T) {
 			Version:          1,
 			PageSize:         1024,
 			Commit:           2,
-			DBID:             1,
 			MinTXID:          3,
 			MaxTXID:          4,
 			PreApplyChecksum: ltx.ChecksumFlag,
@@ -51,44 +50,38 @@ func TestHeader_Validate(t *testing.T) {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
-	t.Run("ErrDBIDRequired", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2}
-		if err := hdr.Validate(); err == nil || err.Error() != `database id required` {
-			t.Fatalf("unexpected error: %s", err)
-		}
-	})
 	t.Run("ErrMinTXIDRequired", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, DBID: 1}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2}
 		if err := hdr.Validate(); err == nil || err.Error() != `minimum transaction id required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrMaxTXIDRequired", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, DBID: 1, MinTXID: 3}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 3}
 		if err := hdr.Validate(); err == nil || err.Error() != `maximum transaction id required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrTXIDOutOfOrderRequired", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, DBID: 1, MinTXID: 3, MaxTXID: 2}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 3, MaxTXID: 2}
 		if err := hdr.Validate(); err == nil || err.Error() != `transaction ids out of order: (3,2)` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrSnapshotPreApplyChecksumNotAllowed", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 4, DBID: 1, MinTXID: 1, MaxTXID: 3, PreApplyChecksum: 1}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 4, MinTXID: 1, MaxTXID: 3, PreApplyChecksum: 1}
 		if err := hdr.Validate(); err == nil || err.Error() != `pre-apply checksum must be zero on snapshots` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrNonSnapshotPreApplyChecksumRequired", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 4, DBID: 1, MinTXID: 2, MaxTXID: 3}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 4, MinTXID: 2, MaxTXID: 3}
 		if err := hdr.Validate(); err == nil || err.Error() != `pre-apply checksum required on non-snapshot files` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrInvalidPreApplyChecksumFormat", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 4, DBID: 1, MinTXID: 2, MaxTXID: 3, PreApplyChecksum: 1}
+		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 4, MinTXID: 2, MaxTXID: 3, PreApplyChecksum: 1}
 		if err := hdr.Validate(); err == nil || err.Error() != `invalid pre-apply checksum format` {
 			t.Fatalf("unexpected error: %s", err)
 		}
@@ -242,55 +235,6 @@ func TestChecksumReader(t *testing.T) {
 	t.Run("ErrUnexpectedEOF", func(t *testing.T) {
 		r := bytes.NewReader(bytes.Repeat([]byte("\x01"), 512))
 		if _, err := ltx.ChecksumReader(r, 1024); err != io.ErrUnexpectedEOF {
-			t.Fatal(err)
-		}
-	})
-}
-
-func TestFormatDBID(t *testing.T) {
-	if got, want := ltx.FormatDBID(0), "00000000"; got != want {
-		t.Fatalf("got=%q, want %q", got, want)
-	}
-	if got, want := ltx.FormatDBID(1000), "000003e8"; got != want {
-		t.Fatalf("got=%q, want %q", got, want)
-	}
-	if got, want := ltx.FormatDBID(math.MaxUint32), "ffffffff"; got != want {
-		t.Fatalf("got=%q, want %q", got, want)
-	}
-}
-
-func TestParseDBID(t *testing.T) {
-	t.Run("OK", func(t *testing.T) {
-		if v, err := ltx.ParseDBID("00000000"); err != nil {
-			t.Fatal(err)
-		} else if got, want := v, uint32(0); got != want {
-			t.Fatalf("got=%d, want %d", got, want)
-		}
-
-		if v, err := ltx.ParseDBID("000003e8"); err != nil {
-			t.Fatal(err)
-		} else if got, want := v, uint32(1000); got != want {
-			t.Fatalf("got=%d, want %d", got, want)
-		}
-
-		if v, err := ltx.ParseDBID("ffffffff"); err != nil {
-			t.Fatal(err)
-		} else if got, want := v, uint32(math.MaxUint32); got != want {
-			t.Fatalf("got=%d, want %d", got, want)
-		}
-	})
-	t.Run("ErrTooShort", func(t *testing.T) {
-		if _, err := ltx.ParseDBID("0e38"); err == nil || err.Error() != `invalid formatted database id length: "0e38"` {
-			t.Fatal(err)
-		}
-	})
-	t.Run("ErrTooLong", func(t *testing.T) {
-		if _, err := ltx.ParseDBID("ffffffff0"); err == nil || err.Error() != `invalid formatted database id length: "ffffffff0"` {
-			t.Fatal(err)
-		}
-	})
-	t.Run("ErrInvalidFormat", func(t *testing.T) {
-		if _, err := ltx.ParseDBID("xxxxxxxx"); err == nil || err.Error() != `invalid database id format: "xxxxxxxx"` {
 			t.Fatal(err)
 		}
 	})
