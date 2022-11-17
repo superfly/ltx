@@ -10,7 +10,8 @@ import (
 
 // Build information.
 var (
-	Version = "dev"
+	Version = ""
+	Commit  = ""
 )
 
 func main() {
@@ -46,6 +47,15 @@ func (m *Main) Run(ctx context.Context, args []string) (err error) {
 		return NewDumpCommand().Run(ctx, args)
 	case "verify":
 		return NewVerifyCommand().Run(ctx, args)
+	case "version":
+		if Version != "" {
+			fmt.Printf("ltx %s, commit=%s\n", Version, Commit)
+		} else if Commit != "" {
+			fmt.Printf("ltx commit=%s\n", Commit)
+		} else {
+			fmt.Println("ltx development build")
+		}
+		return nil
 	default:
 		if cmd == "" || cmd == "help" || strings.HasPrefix(cmd, "-") {
 			m.Usage()
@@ -69,5 +79,6 @@ The commands are:
 	checksum     computes the LTX checksum of a database file
 	dump         writes out metadata and page headers for a set of LTX files
 	verify       reads & verifies checksums of a set of LTX files
+	version      prints the version
 `[1:])
 }
