@@ -40,6 +40,8 @@ func (m *Main) Run(ctx context.Context, args []string) (err error) {
 	}
 
 	switch cmd {
+	case "checksum":
+		return NewChecksumCommand().Run(ctx, args)
 	case "dump":
 		return NewDumpCommand().Run(ctx, args)
 	case "verify":
@@ -64,6 +66,8 @@ Usage:
 
 The commands are:
 
+	checksum     computes the LTX checksum of a database file
+	dump         writes out metadata and page headers for a set of LTX files
 	verify       reads & verifies checksums of a set of LTX files
 `[1:])
 }
