@@ -1,0 +1,55 @@
+on:
+  release:
+    types:
+      - created
+
+name: Release
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            os:   windows
+          - arch: amd64
+            os:   darwin
+          - arch: arm64
+            os:   darwin
+          - arch: amd64
+            os:   linux
+          - arch: arm64
+            os:   linux
+
+    env:
+      GOOS:   ${{ matrix.os }}
+      GOARCH: ${{ matrix.arch }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - id: release
+        uses: bruceadams/get-release@v1.2.3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Build binary
+        run: |
+          rm -rf dist && mkdir -p dist
+          go build -ldflags "-s -w -extldflags "-static" -X 'main.Version=${{ steps.release.outputs.tag_name }}' -X 'main.Commit=${{ github.sha }}'" -o dist/ltx ./cmd/ltx
+          cd dist
+          tar -czvf litefs-${{ steps.release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz ltx
+
+      - name: Upload release tarball
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.release.outputs.upload_url }}
+          asset_path: ./dist/ltx-${{ steps.release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz
+          asset_name: ltx-${{ steps.release.outputs.tag_name }}-${{ env.GOOS }}-${{ env.GOARCH }}.tar.gz
+          asset_content_type: application/gzip
