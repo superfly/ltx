@@ -33,9 +33,9 @@ Usage:
 	ltx list [arguments] PATH [PATH...]
 
 Arguments:
-
 `[1:])
 		fs.PrintDefaults()
+		fmt.Println()
 	}
 	if err := fs.Parse(args); err != nil {
 		return err
