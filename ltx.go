@@ -261,6 +261,7 @@ func ChecksumPage(pgno uint32, data []byte) uint64 {
 // ChecksumReader reads an entire database file from r and computes its rolling checksum.
 func ChecksumReader(r io.Reader, pageSize int) (uint64, error) {
 	data := make([]byte, pageSize)
+	isEmpty := true
 
 	var chksum uint64
 	for pgno := uint32(1); ; pgno++ {
@@ -270,6 +271,11 @@ func ChecksumReader(r io.Reader, pageSize int) (uint64, error) {
 			return chksum, err
 		}
 		chksum ^= ChecksumPage(pgno, data)
+		isEmpty = false
+	}
+
+	if isEmpty {
+		return 0, nil
 	}
 	return ChecksumFlag | chksum, nil
 }

@@ -41,6 +41,8 @@ func (m *Main) Run(ctx context.Context, args []string) (err error) {
 	}
 
 	switch cmd {
+	case "apply":
+		return NewApplyCommand().Run(ctx, args)
 	case "checksum":
 		return NewChecksumCommand().Run(ctx, args)
 	case "dump":
@@ -78,8 +80,10 @@ Usage:
 
 The commands are:
 
+	apply        applies a set of LTX files to a database
 	checksum     computes the LTX checksum of a database file
 	dump         writes out metadata and page headers for a set of LTX files
+	list         lists header & trailer fields for LTX files in a table
 	verify       reads & verifies checksums of a set of LTX files
 	version      prints the version
 `[1:])

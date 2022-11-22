@@ -30,9 +30,9 @@ Usage:
 	ltx dump [arguments] PATH
 
 Arguments:
-
 `[1:])
 		fs.PrintDefaults()
+		fmt.Println()
 	}
 	if err := fs.Parse(args); err != nil {
 		return err
