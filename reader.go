@@ -16,6 +16,7 @@ type Reader struct {
 
 	header  Header
 	trailer Trailer
+	pageN   int
 	hash    hash.Hash64
 }
 
@@ -33,6 +34,9 @@ func (r *Reader) Header() Header { return r.header }
 
 // Trailer returns a copy of the trailer. Available after Close().
 func (r *Reader) Trailer() Trailer { return r.trailer }
+
+// PageN returns the number of pages read from the underlying LTX file.
+func (r *Reader) PageN() int { return r.pageN }
 
 // PeekHeader reads the header into a buffer and allows the caller to inspect it.
 func (r *Reader) PeekHeader() error {
@@ -120,6 +124,7 @@ func (r *Reader) readPage(p []byte) (n int, err error) {
 		return PageHeaderSize + n, err
 	}
 	_, _ = r.hash.Write(pData)
+	r.pageN++
 
 	return pageFrameSize, nil
 }
