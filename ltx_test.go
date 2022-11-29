@@ -21,6 +21,10 @@ func TestHeader_Validate(t *testing.T) {
 			MinTXID:          3,
 			MaxTXID:          4,
 			PreApplyChecksum: ltx.ChecksumFlag,
+			WALSalt1:         5,
+			WALSalt2:         6,
+			WALOffset:        7,
+			WALSize:          8,
 		}
 		if err := hdr.Validate(); err != nil {
 			t.Fatal(err)
@@ -68,6 +72,42 @@ func TestHeader_Validate(t *testing.T) {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
+	t.Run("ErrNegativeWALOffset", func(t *testing.T) {
+		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALOffset: -1000}
+		if err := hdr.Validate(); err == nil || err.Error() != `wal offset cannot be negative: -1000` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrNegativeWALSize", func(t *testing.T) {
+		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALOffset: 32, WALSize: -1000}
+		if err := hdr.Validate(); err == nil || err.Error() != `wal size cannot be negative: -1000` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrWALOffsetRequiredWithWALSalt", func(t *testing.T) {
+		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALSalt1: 100}
+		if err := hdr.Validate(); err == nil || err.Error() != `wal offset required if salt exists` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrWALSizeRequiredWithWALSalt", func(t *testing.T) {
+		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALSalt2: 100, WALOffset: 1000}
+		if err := hdr.Validate(); err == nil || err.Error() != `wal size required if salt exists` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrWALSizeRequiredWithWALOffset", func(t *testing.T) {
+		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALOffset: 1000}
+		if err := hdr.Validate(); err == nil || err.Error() != `wal size required if wal offset exists` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrWALOffsetRequiredWithWALSize", func(t *testing.T) {
+		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALSize: 1000}
+		if err := hdr.Validate(); err == nil || err.Error() != `wal offset required if wal size exists` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
 	t.Run("ErrSnapshotPreApplyChecksumNotAllowed", func(t *testing.T) {
 		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 4, MinTXID: 1, MaxTXID: 3, PreApplyChecksum: 1}
 		if err := hdr.Validate(); err == nil || err.Error() != `pre-apply checksum must be zero on snapshots` {
@@ -90,13 +130,18 @@ func TestHeader_Validate(t *testing.T) {
 
 func TestHeader_MarshalBinary(t *testing.T) {
 	hdr := ltx.Header{
-		Version:   ltx.Version,
-		Flags:     0,
-		PageSize:  1024,
-		Commit:    6,
-		MinTXID:   7,
-		MaxTXID:   8,
-		Timestamp: 9,
+		Version:          ltx.Version,
+		Flags:            0,
+		PageSize:         1024,
+		Commit:           1006,
+		MinTXID:          1007,
+		MaxTXID:          1008,
+		Timestamp:        1009,
+		PreApplyChecksum: 1011,
+		WALSalt1:         1012,
+		WALSalt2:         1013,
+		WALOffset:        1014,
+		WALSize:          1015,
 	}
 
 	var other ltx.Header

@@ -69,6 +69,10 @@ type Header struct {
 	MaxTXID          uint64 // maximum transaction ID
 	Timestamp        uint64 // seconds since unix epoch
 	PreApplyChecksum uint64 // rolling checksum of database before applying this LTX file
+	WALOffset        int64  // file offset from original WAL; zero if journal
+	WALSize          int64  // size of original WAL segment; zero if journal
+	WALSalt1         uint32 // header salt-1 from original WAL; zero if journal or compaction
+	WALSalt2         uint32 // header salt-2 from original WAL; zero if journal or compaction
 }
 
 // IsSnapshot returns true if header represents a complete database snapshot.
@@ -102,6 +106,29 @@ func (h *Header) Validate() error {
 		return fmt.Errorf("transaction ids out of order: (%d,%d)", h.MinTXID, h.MaxTXID)
 	}
 
+	if h.WALOffset < 0 {
+		return fmt.Errorf("wal offset cannot be negative: %d", h.WALOffset)
+	}
+	if h.WALSize < 0 {
+		return fmt.Errorf("wal size cannot be negative: %d", h.WALSize)
+	}
+
+	if h.WALSalt1 != 0 || h.WALSalt2 != 0 {
+		if h.WALOffset == 0 {
+			return fmt.Errorf("wal offset required if salt exists")
+		}
+		if h.WALSize == 0 {
+			return fmt.Errorf("wal size required if salt exists")
+		}
+	}
+
+	if h.WALOffset != 0 && h.WALSize == 0 {
+		return fmt.Errorf("wal size required if wal offset exists")
+	}
+	if h.WALOffset == 0 && h.WALSize != 0 {
+		return fmt.Errorf("wal offset required if wal size exists")
+	}
+
 	// Snapshots are LTX files which have a minimum TXID of 1. This means they
 	// must have all database pages included in them and they have no previous checksum.
 	if h.IsSnapshot() {
@@ -131,6 +158,10 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint64(b[24:], h.MaxTXID)
 	binary.BigEndian.PutUint64(b[32:], h.Timestamp)
 	binary.BigEndian.PutUint64(b[40:], h.PreApplyChecksum)
+	binary.BigEndian.PutUint64(b[48:], uint64(h.WALOffset))
+	binary.BigEndian.PutUint64(b[56:], uint64(h.WALSize))
+	binary.BigEndian.PutUint32(b[64:], h.WALSalt1)
+	binary.BigEndian.PutUint32(b[68:], h.WALSalt2)
 	return b, nil
 }
 
@@ -147,6 +178,10 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.MaxTXID = binary.BigEndian.Uint64(b[24:])
 	h.Timestamp = binary.BigEndian.Uint64(b[32:])
 	h.PreApplyChecksum = binary.BigEndian.Uint64(b[40:])
+	h.WALOffset = int64(binary.BigEndian.Uint64(b[48:]))
+	h.WALSize = int64(binary.BigEndian.Uint64(b[56:]))
+	h.WALSalt1 = binary.BigEndian.Uint32(b[64:])
+	h.WALSalt2 = binary.BigEndian.Uint32(b[68:])
 
 	if string(b[0:4]) != Magic {
 		return ErrInvalidFile
