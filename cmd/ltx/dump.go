@@ -63,6 +63,9 @@ Arguments:
 	fmt.Printf("Max TXID:  %s (%d)\n", ltx.FormatTXID(hdr.MaxTXID), hdr.MaxTXID)
 	fmt.Printf("Timestamp: %s (%d)\n", time.UnixMilli(int64(hdr.Timestamp)).UTC().Format(time.RFC3339Nano), hdr.Timestamp)
 	fmt.Printf("Pre-apply: %016x\n", hdr.PreApplyChecksum)
+	fmt.Printf("WAL offset: %d\n", hdr.WALOffset)
+	fmt.Printf("WAL size:   %d\n", hdr.WALSize)
+	fmt.Printf("WAL salt:   %08x %08x\n", hdr.WALSalt1, hdr.WALSalt2)
 	fmt.Printf("\n")
 	if err != nil {
 		return err
