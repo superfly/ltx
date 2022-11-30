@@ -67,7 +67,7 @@ type Header struct {
 	Commit           uint32 // db size after transaction, in pages
 	MinTXID          uint64 // minimum transaction ID
 	MaxTXID          uint64 // maximum transaction ID
-	Timestamp        uint64 // seconds since unix epoch
+	Timestamp        int64  // seconds since unix epoch
 	PreApplyChecksum uint64 // rolling checksum of database before applying this LTX file
 	WALOffset        int64  // file offset from original WAL; zero if journal
 	WALSize          int64  // size of original WAL segment; zero if journal
@@ -156,7 +156,7 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint32(b[12:], h.Commit)
 	binary.BigEndian.PutUint64(b[16:], h.MinTXID)
 	binary.BigEndian.PutUint64(b[24:], h.MaxTXID)
-	binary.BigEndian.PutUint64(b[32:], h.Timestamp)
+	binary.BigEndian.PutUint64(b[32:], uint64(h.Timestamp))
 	binary.BigEndian.PutUint64(b[40:], h.PreApplyChecksum)
 	binary.BigEndian.PutUint64(b[48:], uint64(h.WALOffset))
 	binary.BigEndian.PutUint64(b[56:], uint64(h.WALSize))
@@ -176,7 +176,7 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.Commit = binary.BigEndian.Uint32(b[12:])
 	h.MinTXID = binary.BigEndian.Uint64(b[16:])
 	h.MaxTXID = binary.BigEndian.Uint64(b[24:])
-	h.Timestamp = binary.BigEndian.Uint64(b[32:])
+	h.Timestamp = int64(binary.BigEndian.Uint64(b[32:]))
 	h.PreApplyChecksum = binary.BigEndian.Uint64(b[40:])
 	h.WALOffset = int64(binary.BigEndian.Uint64(b[48:]))
 	h.WALSize = int64(binary.BigEndian.Uint64(b[56:]))
