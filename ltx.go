@@ -67,7 +67,7 @@ type Header struct {
 	Commit           uint32 // db size after transaction, in pages
 	MinTXID          uint64 // minimum transaction ID
 	MaxTXID          uint64 // maximum transaction ID
-	Timestamp        int64  // seconds since unix epoch
+	Timestamp        int64  // milliseconds since unix epoch
 	PreApplyChecksum uint64 // rolling checksum of database before applying this LTX file
 	WALOffset        int64  // file offset from original WAL; zero if journal
 	WALSize          int64  // size of original WAL segment; zero if journal
