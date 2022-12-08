@@ -43,13 +43,8 @@ var (
 	ErrChecksumMismatch      = errors.New("file checksum mismatch")
 )
 
-const (
-	// ChecksumFlag is a flag on the checksum to ensure it is non-zero.
-	ChecksumFlag uint64 = 1 << 63
-
-	// ChecksumMask is the mask of the bits used for the page checksum.
-	ChecksumMask uint64 = (1 << 63) - 1
-)
+// ChecksumFlag is a flag on the checksum to ensure it is non-zero.
+const ChecksumFlag uint64 = 1 << 63
 
 // internal reader/writer states
 const (
@@ -290,13 +285,12 @@ func ChecksumPage(pgno uint32, data []byte) uint64 {
 	h := crc64.New(crc64.MakeTable(crc64.ISO))
 	_ = binary.Write(h, binary.BigEndian, pgno)
 	_, _ = h.Write(data)
-	return h.Sum64() & ChecksumMask
+	return ChecksumFlag | h.Sum64()
 }
 
 // ChecksumReader reads an entire database file from r and computes its rolling checksum.
 func ChecksumReader(r io.Reader, pageSize int) (uint64, error) {
 	data := make([]byte, pageSize)
-	isEmpty := true
 
 	var chksum uint64
 	for pgno := uint32(1); ; pgno++ {
@@ -305,14 +299,9 @@ func ChecksumReader(r io.Reader, pageSize int) (uint64, error) {
 		} else if err != nil {
 			return chksum, err
 		}
-		chksum ^= ChecksumPage(pgno, data)
-		isEmpty = false
+		chksum = ChecksumFlag | (chksum ^ ChecksumPage(pgno, data))
 	}
-
-	if isEmpty {
-		return 0, nil
-	}
-	return ChecksumFlag | chksum, nil
+	return chksum, nil
 }
 
 // FormatTXID returns id formatted as a fixed-width hex number.
