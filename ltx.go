@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash"
 	"hash/crc64"
 	"io"
 	"regexp"
@@ -280,9 +281,19 @@ func (h *PageHeader) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
+// NewHasher returns a new CRC64-ISO hasher.
+func NewHasher() hash.Hash64 {
+	return crc64.New(crc64.MakeTable(crc64.ISO))
+}
+
 // ChecksumPage returns a CRC64 checksum that combines the page number & page data.
 func ChecksumPage(pgno uint32, data []byte) uint64 {
-	h := crc64.New(crc64.MakeTable(crc64.ISO))
+	return ChecksumPageWithHasher(NewHasher(), pgno, data)
+}
+
+// ChecksumPageWithHasher returns a CRC64 checksum that combines the page number & page data.
+func ChecksumPageWithHasher(h hash.Hash64, pgno uint32, data []byte) uint64 {
+	h.Reset()
 	_ = binary.Write(h, binary.BigEndian, pgno)
 	_, _ = h.Write(data)
 	return ChecksumFlag | h.Sum64()
