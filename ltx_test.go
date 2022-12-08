@@ -3,8 +3,10 @@ package ltx_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"os"
 	"reflect"
 	"testing"
@@ -332,6 +334,47 @@ func TestParseTXID(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func BenchmarkChecksumPage(b *testing.B) {
+	for _, pageSize := range []int{512, 1024, 2048, 4096, 8192, 16384, 32768, 65536} {
+		b.Run(fmt.Sprint(pageSize), func(b *testing.B) {
+			benchmarkChecksumPage(b, pageSize)
+		})
+	}
+}
+
+func benchmarkChecksumPage(b *testing.B, pageSize int) {
+	data := make([]byte, pageSize)
+	_, _ = rand.Read(data)
+	b.ReportAllocs()
+	b.SetBytes(int64(pageSize))
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		ltx.ChecksumPage(uint32(i%math.MaxUint32), data)
+	}
+}
+
+func BenchmarkChecksumPageWithHasher(b *testing.B) {
+	for _, pageSize := range []int{512, 1024, 2048, 4096, 8192, 16384, 32768, 65536} {
+		b.Run(fmt.Sprint(pageSize), func(b *testing.B) {
+			benchmarkChecksumPageWithHasher(b, pageSize)
+		})
+	}
+}
+
+func benchmarkChecksumPageWithHasher(b *testing.B, pageSize int) {
+	data := make([]byte, pageSize)
+	_, _ = rand.Read(data)
+	b.ReportAllocs()
+	b.SetBytes(int64(pageSize))
+	b.ResetTimer()
+
+	h := ltx.NewHasher()
+	for i := 0; i < b.N; i++ {
+		ltx.ChecksumPageWithHasher(h, uint32(i%math.MaxUint32), data)
+	}
 }
 
 // createFile creates a file and returns the file handle. Closes on cleanup.
