@@ -377,6 +377,28 @@ func benchmarkChecksumPageWithHasher(b *testing.B, pageSize int) {
 	}
 }
 
+// BenchmarkXOR simulates the sum of checksums for a 1GB database (assuming 4KB pages).
+func BenchmarkXOR(b *testing.B) {
+	const pageSize = 4096
+	const pageN = (1 << 30) / pageSize
+
+	m := make(map[uint32]uint64)
+	page := make([]byte, pageSize)
+	for pgno := uint32(1); pgno <= pageN; pgno++ {
+		_, _ = rand.Read(page)
+		m[pgno] = ltx.ChecksumPage(pgno, page)
+	}
+	b.SetBytes(int64(pageN * pageSize))
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		var chksum uint64
+		for pgno := uint32(1); pgno <= pageN; pgno++ {
+			chksum ^= m[pgno]
+		}
+	}
+}
+
 // createFile creates a file and returns the file handle. Closes on cleanup.
 func createFile(tb testing.TB, name string) *os.File {
 	tb.Helper()
