@@ -350,3 +350,10 @@ var filenameRegex = regexp.MustCompile(`^([0-9a-f]{16})-([0-9a-f]{16})\.ltx$`)
 func FormatFilename(minTXID, maxTXID uint64) string {
 	return fmt.Sprintf("%016x-%016x.ltx", minTXID, maxTXID)
 }
+
+const PENDING_BYTE = 0x40000000
+
+// LockPgno returns the page number where the PENDING_BYTE exists.
+func LockPgno(pageSize uint32) uint32 {
+	return uint32(PENDING_BYTE/int64(pageSize)) + 1
+}

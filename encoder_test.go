@@ -1,6 +1,7 @@
 package ltx_test
 
 import (
+	"io"
 	"math/rand"
 	"path/filepath"
 	"testing"
@@ -135,6 +136,44 @@ func TestEncode_EncodePage(t *testing.T) {
 		}
 
 		if err := enc.EncodePage(ltx.PageHeader{Pgno: 3}, make([]byte, 1024)); err == nil || err.Error() != `nonsequential page numbers in snapshot transaction: 1,3` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+
+	t.Run("ErrCannotEncodeLockPage", func(t *testing.T) {
+		enc := ltx.NewEncoder(io.Discard)
+		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 4096, Commit: 262145, MinTXID: 1, MaxTXID: 1}); err != nil {
+			t.Fatal(err)
+		}
+
+		pageBuf := make([]byte, 4096)
+		for pgno := uint32(1); pgno <= 262144; pgno++ {
+			if err := enc.EncodePage(ltx.PageHeader{Pgno: pgno}, pageBuf); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		// Try to encode lock page.
+		if err := enc.EncodePage(ltx.PageHeader{Pgno: 262145}, pageBuf); err == nil || err.Error() != `cannot encode lock page: pgno=262145` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+
+	t.Run("ErrSnapshotNonsequentialPagesAfterLockPage", func(t *testing.T) {
+		enc := ltx.NewEncoder(io.Discard)
+		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 4096, Commit: 262147, MinTXID: 1, MaxTXID: 1}); err != nil {
+			t.Fatal(err)
+		}
+
+		pageBuf := make([]byte, 4096)
+		for pgno := uint32(1); pgno <= 262144; pgno++ {
+			if err := enc.EncodePage(ltx.PageHeader{Pgno: pgno}, pageBuf); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		// Try to encode lock page.
+		if err := enc.EncodePage(ltx.PageHeader{Pgno: 262147}, pageBuf); err == nil || err.Error() != `nonsequential page numbers in snapshot transaction (skip lock page): 262144,262147` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
