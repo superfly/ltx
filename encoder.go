@@ -128,11 +128,22 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 		return fmt.Errorf("invalid page buffer size: %d, expecting %d", len(data), enc.header.PageSize)
 	}
 
+	lockPgno := LockPgno(enc.header.PageSize)
+	if hdr.Pgno == lockPgno {
+		return fmt.Errorf("cannot encode lock page: pgno=%d", hdr.Pgno)
+	}
+
 	// Snapshots must start with page 1 and include all pages up to the commit size.
 	// Non-snapshot files can include any pages but they must be in order.
 	if enc.header.IsSnapshot() {
 		if enc.prevPgno == 0 && hdr.Pgno != 1 {
 			return fmt.Errorf("snapshot transaction file must start with page number 1")
+		}
+
+		if enc.prevPgno == lockPgno-1 {
+			if hdr.Pgno != enc.prevPgno+2 { // skip lock page
+				return fmt.Errorf("nonsequential page numbers in snapshot transaction (skip lock page): %d,%d", enc.prevPgno, hdr.Pgno)
+			}
 		} else if enc.prevPgno != 0 && hdr.Pgno != enc.prevPgno+1 {
 			return fmt.Errorf("nonsequential page numbers in snapshot transaction: %d,%d", enc.prevPgno, hdr.Pgno)
 		}
