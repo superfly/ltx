@@ -46,7 +46,7 @@ Arguments:
 	w := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
 	defer w.Flush()
 
-	fmt.Fprintln(w, "min_txid\tmax_txid\tpages\tpreapply\tpostapply\ttimestamp")
+	fmt.Fprintln(w, "min_txid\tmax_txid\tcommit\tpages\tpreapply\tpostapply\ttimestamp")
 	for _, arg := range fs.Args() {
 		if err := c.printFile(w, arg); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", arg, err)
@@ -74,9 +74,10 @@ func (c *ListCommand) printFile(w *tabwriter.Writer, filename string) error {
 		timestamp = ""
 	}
 
-	fmt.Fprintf(w, "%s\t%s\t%d\t%016x\t%016x\t%s\n",
+	fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%016x\t%016x\t%s\n",
 		ltx.FormatTXID(r.Header().MinTXID),
 		ltx.FormatTXID(r.Header().MaxTXID),
+		r.Header().Commit,
 		r.PageN(),
 		r.Header().PreApplyChecksum,
 		r.Trailer().PostApplyChecksum,
