@@ -69,7 +69,7 @@ func (c *ListCommand) printFile(w *tabwriter.Writer, filename string) error {
 	}
 
 	// Only show timestamp if it is actually set.
-	timestamp := time.UnixMilli(int64(r.Header().Timestamp)).UTC().Format(time.RFC3339)
+	timestamp := time.UnixMilli(int64(r.Header().Timestamp)).UTC().Format(time.RFC3339Nano)
 	if r.Header().Timestamp == 0 {
 		timestamp = ""
 	}

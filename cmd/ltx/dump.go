@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/superfly/ltx"
 )
@@ -60,7 +61,7 @@ Arguments:
 	fmt.Printf("Commit:    %d\n", hdr.Commit)
 	fmt.Printf("Min TXID:  %s (%d)\n", ltx.FormatTXID(hdr.MinTXID), hdr.MinTXID)
 	fmt.Printf("Max TXID:  %s (%d)\n", ltx.FormatTXID(hdr.MaxTXID), hdr.MaxTXID)
-	fmt.Printf("Timestamp: %d\n", hdr.Timestamp)
+	fmt.Printf("Timestamp: %s (%d)\n", time.UnixMilli(int64(hdr.Timestamp)).UTC().Format(time.RFC3339Nano), hdr.Timestamp)
 	fmt.Printf("Pre-apply: %016x\n", hdr.PreApplyChecksum)
 	fmt.Printf("\n")
 	if err != nil {
