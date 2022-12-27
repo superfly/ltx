@@ -211,7 +211,7 @@ func TestPageHeader_UnmarshalBinary(t *testing.T) {
 func TestIsValidHeaderFlags(t *testing.T) {
 	if !ltx.IsValidHeaderFlags(0) {
 		t.Fatal("expected valid")
-	} else if ltx.IsValidHeaderFlags(1) {
+	} else if ltx.IsValidHeaderFlags(100) {
 		t.Fatal("expected invalid")
 	}
 }

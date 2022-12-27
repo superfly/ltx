@@ -10,10 +10,16 @@ import (
 )
 
 func TestDecoder(t *testing.T) {
-	t.Run("OK", func(t *testing.T) {
+	testDecoder(t, "OK", 0)
+	testDecoder(t, "CompressLZ4", ltx.HeaderFlagCompressLZ4)
+}
+
+func testDecoder(t *testing.T, name string, flags uint32) {
+	t.Run(name, func(t *testing.T) {
 		spec := &ltx.FileSpec{
 			Header: ltx.Header{
 				Version:   1,
+				Flags:     flags,
 				PageSize:  1024,
 				Commit:    2,
 				MinTXID:   1,

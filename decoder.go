@@ -5,11 +5,14 @@ import (
 	"hash"
 	"hash/crc64"
 	"io"
+
+	"github.com/pierrec/lz4/v4"
 )
 
 // Decoder represents a decoder of an LTX file.
 type Decoder struct {
-	r io.Reader
+	underlying io.Reader // main reader
+	r          io.Reader // current reader (either main or lz4)
 
 	header  Header
 	trailer Trailer
@@ -22,9 +25,10 @@ type Decoder struct {
 // NewDecoder returns a new instance of Decoder.
 func NewDecoder(r io.Reader) *Decoder {
 	return &Decoder{
-		r:     r,
-		state: stateHeader,
-		hash:  crc64.New(crc64.MakeTable(crc64.ISO)),
+		underlying: r,
+		r:          r,
+		state:      stateHeader,
+		hash:       crc64.New(crc64.MakeTable(crc64.ISO)),
 	}
 }
 
@@ -79,7 +83,16 @@ func (dec *Decoder) DecodeHeader() error {
 	dec.writeToHash(b)
 	dec.state = statePage
 
-	return dec.header.Validate()
+	if err := dec.header.Validate(); err != nil {
+		return err
+	}
+
+	// Use LZ4 reader if compression is enabled.
+	if dec.header.Flags&HeaderFlagCompressLZ4 == 1 {
+		dec.r = lz4.NewReader(dec.underlying)
+	}
+
+	return nil
 }
 
 // DecodePage reads the next page header into hdr and associated page data.
@@ -106,6 +119,15 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 
 	// An empty page header indicates the end of the page block.
 	if hdr.IsZero() {
+		// Revert back to regular reader if we were using a compressed reader.
+		// We need to read off the LZ4 trailer frame to ensure we hit EOF.
+		if zr, ok := dec.r.(*lz4.Reader); ok {
+			if _, err := io.ReadFull(zr, make([]byte, 1)); err != io.EOF {
+				return fmt.Errorf("expected lz4 end frame")
+			}
+			dec.r = dec.underlying
+		}
+
 		dec.state = stateClose
 		return io.EOF
 	}
