@@ -5,12 +5,15 @@ import (
 	"hash"
 	"hash/crc64"
 	"io"
+
+	"github.com/pierrec/lz4/v4"
 )
 
 // Encoder implements a encoder for an LTX file.
 type Encoder struct {
-	w     io.Writer
-	state string
+	underlying io.Writer // main writer
+	w          io.Writer // current writer (main or lz4 writer)
+	state      string
 
 	header  Header
 	trailer Trailer
@@ -25,8 +28,9 @@ type Encoder struct {
 // NewEncoder returns a new instance of Encoder.
 func NewEncoder(w io.Writer) *Encoder {
 	return &Encoder{
-		w:     w,
-		state: stateHeader,
+		underlying: w,
+		w:          w,
+		state:      stateHeader,
 	}
 }
 
@@ -57,10 +61,19 @@ func (enc *Encoder) Close() error {
 	b0, err := (&PageHeader{}).MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("marshal empty page header: %w", err)
-	} else if _, err := enc.w.Write(b0); err != nil {
+	} else if _, err := enc.write(b0); err != nil {
 		return fmt.Errorf("write empty page header: %w", err)
 	}
-	enc.writeToHash(b0)
+
+	// Close the compressed writer, if in use.
+	if zw, ok := enc.w.(*lz4.Writer); ok {
+		if err := zw.Close(); err != nil {
+			return fmt.Errorf("cannot close lz4 writer: %w", err)
+		}
+	}
+
+	// Revert to original writer now that we've passed the compressed body.
+	enc.w = enc.underlying
 
 	// Marshal trailer to bytes.
 	b1, err := enc.trailer.MarshalBinary()
@@ -96,17 +109,24 @@ func (enc *Encoder) EncodeHeader(hdr Header) error {
 
 	enc.header = hdr
 
+	// Initialize hash.
+	enc.hash = crc64.New(crc64.MakeTable(crc64.ISO))
+
 	// Write header to underlying writer.
 	b, err := enc.header.MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("marshal header: %w", err)
-	} else if _, err := enc.w.Write(b); err != nil {
+	} else if _, err := enc.write(b); err != nil {
 		return fmt.Errorf("write header: %w", err)
 	}
 
-	// Begin computing the checksum with the upper bytes of the header.
-	enc.hash = crc64.New(crc64.MakeTable(crc64.ISO))
-	enc.writeToHash(b)
+	// Use a compressed writer for the body if LZ4 is enabled.
+	if enc.header.Flags&HeaderFlagCompressLZ4 != 0 {
+		zw := lz4.NewWriter(enc.underlying)
+		zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb)) // minimize memory allocation
+		zw.Apply(lz4.CompressionLevelOption(lz4.Fast))
+		enc.w = zw
+	}
 
 	// Move writer state to write page headers.
 	enc.state = statePage // file must have at least one page
@@ -157,20 +177,25 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 	b, err := hdr.MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
-	} else if _, err := enc.w.Write(b); err != nil {
+	} else if _, err := enc.write(b); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
-	enc.writeToHash(b)
 
 	// Write data to file.
-	if _, err = enc.w.Write(data); err != nil {
+	if _, err = enc.write(data); err != nil {
 		return fmt.Errorf("write page data: %w", err)
 	}
-	enc.writeToHash(data)
 
 	enc.pagesWritten++
 	enc.prevPgno = hdr.Pgno
 	return nil
+}
+
+// write to the current writer & add to the checksum.
+func (enc *Encoder) write(b []byte) (n int, err error) {
+	n, err = enc.w.Write(b)
+	enc.writeToHash(b[:n])
+	return n, err
 }
 
 func (enc *Encoder) writeToHash(b []byte) {

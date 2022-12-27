@@ -55,6 +55,13 @@ const (
 	stateClosed = "closed"
 )
 
+// Header flags.
+const (
+	HeaderFlagMask = uint32(0x00000001)
+
+	HeaderFlagCompressLZ4 = uint32(0x00000001)
+)
+
 // Header represents the header frame of an LTX file.
 type Header struct {
 	Version          int    // based on magic
@@ -187,9 +194,9 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
-// IsValidHeaderFlags returns true if flags are unset. Flags are reserved.
+// IsValidHeaderFlags returns true unless flags outside the valid mask are set.
 func IsValidHeaderFlags(flags uint32) bool {
-	return flags == 0
+	return flags == (flags & HeaderFlagMask)
 }
 
 // Trailer represents the ending frame of an LTX file.
