@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"text/tabwriter"
 	"time"
@@ -63,24 +62,24 @@ func (c *ListCommand) printFile(w *tabwriter.Writer, filename string) error {
 	}
 	defer f.Close()
 
-	r := ltx.NewReader(f)
-	if _, err := io.Copy(io.Discard, r); err != nil {
+	dec := ltx.NewDecoder(f)
+	if err := dec.Verify(); err != nil {
 		return err
 	}
 
 	// Only show timestamp if it is actually set.
-	timestamp := time.UnixMilli(int64(r.Header().Timestamp)).UTC().Format(time.RFC3339Nano)
-	if r.Header().Timestamp == 0 {
+	timestamp := time.UnixMilli(int64(dec.Header().Timestamp)).UTC().Format(time.RFC3339Nano)
+	if dec.Header().Timestamp == 0 {
 		timestamp = ""
 	}
 
 	fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%016x\t%016x\t%s\n",
-		ltx.FormatTXID(r.Header().MinTXID),
-		ltx.FormatTXID(r.Header().MaxTXID),
-		r.Header().Commit,
-		r.PageN(),
-		r.Header().PreApplyChecksum,
-		r.Trailer().PostApplyChecksum,
+		ltx.FormatTXID(dec.Header().MinTXID),
+		ltx.FormatTXID(dec.Header().MaxTXID),
+		dec.Header().Commit,
+		dec.PageN(),
+		dec.Header().PreApplyChecksum,
+		dec.Trailer().PostApplyChecksum,
 		timestamp,
 	)
 

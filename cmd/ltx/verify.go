@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/superfly/ltx"
@@ -64,17 +63,5 @@ func (c *VerifyCommand) verifyFile(ctx context.Context, filename string) error {
 	}
 	defer f.Close()
 
-	fi, err := f.Stat()
-	if err != nil {
-		return err
-	}
-
-	n, err := io.Copy(io.Discard, ltx.NewReader(f))
-	if err != nil {
-		return err
-	} else if int64(n) > fi.Size() {
-		return fmt.Errorf("contains %d bytes past end of LTX contents (%d bytes)", int64(n)-fi.Size(), fi.Size())
-	}
-
-	return nil
+	return ltx.NewDecoder(f).Verify()
 }
