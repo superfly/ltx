@@ -18,8 +18,9 @@ type Decoder struct {
 	trailer Trailer
 	state   string
 
-	hash hash.Hash64
-	n    int64 // bytes read
+	hash  hash.Hash64
+	pageN int   // pages read
+	n     int64 // bytes read
 }
 
 // NewDecoder returns a new instance of Decoder.
@@ -34,6 +35,9 @@ func NewDecoder(r io.Reader) *Decoder {
 
 // N returns the number of bytes read.
 func (dec *Decoder) N() int64 { return dec.n }
+
+// PageN returns the number of pages read.
+func (dec *Decoder) PageN() int { return dec.pageN }
 
 // Header returns a copy of the header.
 func (dec *Decoder) Header() Header { return dec.header }
@@ -88,7 +92,7 @@ func (dec *Decoder) DecodeHeader() error {
 	}
 
 	// Use LZ4 reader if compression is enabled.
-	if dec.header.Flags&HeaderFlagCompressLZ4 == 1 {
+	if dec.header.Flags&HeaderFlagCompressLZ4 != 0 {
 		dec.r = lz4.NewReader(dec.underlying)
 	}
 
@@ -141,15 +145,16 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 		return err
 	}
 	dec.writeToHash(data)
+	dec.pageN++
 
 	return nil
 }
 
-// Verify reads the entire file and returns the header & trailer.
-// All page data is discarded.
-func (dec *Decoder) Verify() (Header, Trailer, error) {
+// Verify reads the entire file. Header & trailer can be accessed via methods
+// after the file is successfully verified. All other data is discarded.
+func (dec *Decoder) Verify() error {
 	if err := dec.DecodeHeader(); err != nil {
-		return Header{}, Trailer{}, fmt.Errorf("read header: %w", err)
+		return fmt.Errorf("decode header: %w", err)
 	}
 
 	var pageHeader PageHeader
@@ -158,17 +163,29 @@ func (dec *Decoder) Verify() (Header, Trailer, error) {
 		if err := dec.DecodePage(&pageHeader, data); err == io.EOF {
 			break
 		} else if err != nil {
-			return Header{}, Trailer{}, fmt.Errorf("read page %d: %w", i, err)
+			return fmt.Errorf("decode page %d: %w", i, err)
 		}
 	}
 
 	if err := dec.Close(); err != nil {
-		return Header{}, Trailer{}, fmt.Errorf("close reader: %w", err)
+		return fmt.Errorf("close reader: %w", err)
 	}
-	return dec.header, dec.trailer, nil
+	return nil
 }
 
 func (dec *Decoder) writeToHash(b []byte) {
 	_, _ = dec.hash.Write(b)
 	dec.n += int64(len(b))
+}
+
+// DecodeHeader decodes the header from r. Returns the header & read bytes.
+func DecodeHeader(r io.Reader) (hdr Header, data []byte, err error) {
+	data = make([]byte, HeaderSize)
+	n, err := io.ReadFull(r, data)
+	if err != nil {
+		return hdr, data[:n], err
+	} else if err := hdr.UnmarshalBinary(data); err != nil {
+		return hdr, data[:n], err
+	}
+	return hdr, data, nil
 }
