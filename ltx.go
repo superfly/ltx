@@ -76,6 +76,7 @@ type Header struct {
 	WALSize          int64  // size of original WAL segment; zero if journal
 	WALSalt1         uint32 // header salt-1 from original WAL; zero if journal or compaction
 	WALSalt2         uint32 // header salt-2 from original WAL; zero if journal or compaction
+	NodeID           uint64 // node id where the LTX file was created, zero if unset
 }
 
 // IsSnapshot returns true if header represents a complete database snapshot.
@@ -165,6 +166,7 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint64(b[56:], uint64(h.WALSize))
 	binary.BigEndian.PutUint32(b[64:], h.WALSalt1)
 	binary.BigEndian.PutUint32(b[68:], h.WALSalt2)
+	binary.BigEndian.PutUint64(b[72:], h.NodeID)
 	return b, nil
 }
 
@@ -185,6 +187,7 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.WALSize = int64(binary.BigEndian.Uint64(b[56:]))
 	h.WALSalt1 = binary.BigEndian.Uint32(b[64:])
 	h.WALSalt2 = binary.BigEndian.Uint32(b[68:])
+	h.NodeID = binary.BigEndian.Uint64(b[72:])
 
 	if string(b[0:4]) != Magic {
 		return ErrInvalidFile
