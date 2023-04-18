@@ -3,6 +3,7 @@ package ltx
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
@@ -54,6 +55,51 @@ const (
 	stateClose  = "close"
 	stateClosed = "closed"
 )
+
+// Pos represents the transactional position of a database.
+type Pos struct {
+	TXID              uint64
+	PostApplyChecksum uint64
+}
+
+// String returns a string representation of the position.
+func (p Pos) String() string {
+	return fmt.Sprintf("%016x/%016x", p.TXID, p.PostApplyChecksum)
+}
+
+// IsZero returns true if the position is empty.
+func (p Pos) IsZero() bool {
+	return p == (Pos{})
+}
+
+// Marshal serializes the position into JSON.
+func (p Pos) MarshalJSON() ([]byte, error) {
+	var v posJSON
+	v.TXID = FormatTXID(p.TXID)
+	v.PostApplyChecksum = fmt.Sprintf("%016x", p.PostApplyChecksum)
+	return json.Marshal(v)
+}
+
+// Unmarshal deserializes the position from JSON.
+func (p *Pos) UnmarshalJSON(data []byte) (err error) {
+	var v posJSON
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+
+	if p.TXID, err = ParseTXID(v.TXID); err != nil {
+		return fmt.Errorf("cannot parse txid: %q", v.TXID)
+	}
+	if p.PostApplyChecksum, err = strconv.ParseUint(v.PostApplyChecksum, 16, 64); err != nil {
+		return fmt.Errorf("cannot parse post-apply checksum: %q", v.PostApplyChecksum)
+	}
+	return nil
+}
+
+type posJSON struct {
+	TXID              string `json:"txid"`
+	PostApplyChecksum string `json:"postApplyChecksum"`
+}
 
 // Header flags.
 const (
