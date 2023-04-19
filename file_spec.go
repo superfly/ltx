@@ -1,6 +1,7 @@
 package ltx
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 )
@@ -67,8 +68,42 @@ func (s *FileSpec) ReadFrom(src io.Reader) (n int, err error) {
 	return int(dec.N()), nil
 }
 
+// GoString returns the Go representation of s.
+func (s *FileSpec) GoString() string {
+	var buf bytes.Buffer
+
+	fmt.Fprintf(&buf, "{\n")
+	fmt.Fprintf(&buf, "\tHeader: %#v,\n", s.Header)
+
+	if s.Pages == nil {
+		fmt.Fprintf(&buf, "\tPages: nil,\n")
+	} else {
+		fmt.Fprintf(&buf, "\tPages: []*PageSpec{,\n")
+		for i := range s.Pages {
+			fmt.Fprintf(&buf, "\t\t%#v,\n", &s.Pages[i])
+		}
+		fmt.Fprintf(&buf, "\t},\n")
+	}
+
+	fmt.Fprintf(&buf, "\tTrailer: %#v,\n", s.Trailer)
+	fmt.Fprintf(&buf, "}")
+
+	return buf.String()
+}
+
 // PageSpec is an in-memory representation of an LTX page frame. Typically used for testing.
 type PageSpec struct {
 	Header PageHeader
 	Data   []byte
+}
+
+// GoString returns the Go representation of s.
+func (s *PageSpec) GoString() string {
+	var data string
+	if len(s.Data) < 4 {
+		data = fmt.Sprintf(`"%x"`, s.Data)
+	} else {
+		data = fmt.Sprintf(`"%x..."`, s.Data[:4])
+	}
+	return fmt.Sprintf(`{Header:%#v, Data:[]byte(%s)}`, s.Header, data)
 }
