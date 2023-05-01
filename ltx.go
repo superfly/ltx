@@ -101,6 +101,21 @@ type posJSON struct {
 	PostApplyChecksum string `json:"postApplyChecksum"`
 }
 
+// PosMismatchError is returned when an LTX file is not contiguous with the current position.
+type PosMismatchError struct {
+	Pos Pos `json:"pos"`
+}
+
+// NewPosMismatchError returns a new instance of PosMismatchError.
+func NewPosMismatchError(pos Pos) *PosMismatchError {
+	return &PosMismatchError{Pos: pos}
+}
+
+// Error returns the string representation of the error.
+func (e *PosMismatchError) Error() string {
+	return fmt.Sprintf("ltx position mismatch (%s)", e.Pos)
+}
+
 // Header flags.
 const (
 	HeaderFlagMask = uint32(0x00000001)
