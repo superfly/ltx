@@ -191,6 +191,47 @@ func TestCompactor_Compact(t *testing.T) {
 		})
 	})
 
+	t.Run("Shrinking", func(t *testing.T) {
+		spec, err := compactFileSpecs(t,
+			&ltx.FileSpec{
+				Header: ltx.Header{Version: 1, PageSize: 1024, Commit: 3, MinTXID: 2, MaxTXID: 3, Timestamp: 1000, PreApplyChecksum: ltx.ChecksumFlag | 2},
+				Pages: []ltx.PageSpec{
+					{Header: ltx.PageHeader{Pgno: 3}, Data: bytes.Repeat([]byte{0x83}, 1024)},
+				},
+				Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 3},
+			},
+			&ltx.FileSpec{
+				Header: ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 4, MaxTXID: 5, Timestamp: 2000, PreApplyChecksum: ltx.ChecksumFlag | 4},
+				Pages: []ltx.PageSpec{
+					{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x91}, 1024)},
+				},
+				Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 5},
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		assertFileSpecEqual(t, spec, &ltx.FileSpec{
+			Header: ltx.Header{
+				Version:          1,
+				PageSize:         1024,
+				Commit:           2,
+				MinTXID:          2,
+				MaxTXID:          5,
+				Timestamp:        1000,
+				PreApplyChecksum: ltx.ChecksumFlag | 2,
+			},
+			Pages: []ltx.PageSpec{
+				{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x91}, 1024)},
+			},
+			Trailer: ltx.Trailer{
+				PostApplyChecksum: ltx.ChecksumFlag | 5,
+				FileChecksum:      0xf2685845dfc970a4,
+			},
+		})
+	})
+
 	t.Run("ErrInputReaderRequired", func(t *testing.T) {
 		c := ltx.NewCompactor(&bytes.Buffer{}, nil)
 		if err := c.Compact(context.Background()); err == nil || err.Error() != `at least one input reader required` {

@@ -144,6 +144,8 @@ func (c *Compactor) fillPageBuffers(ctx context.Context) (pgno uint32, err error
 
 // writePageBuffer writes the buffer with a matching pgno from the latest input.
 func (c *Compactor) writePageBuffer(ctx context.Context, pgno uint32) error {
+	commit := c.enc.Header().Commit
+
 	var pageWritten bool
 	for i := len(c.inputs) - 1; i >= 0; i-- {
 		input := c.inputs[i]
@@ -152,16 +154,21 @@ func (c *Compactor) writePageBuffer(ctx context.Context, pgno uint32) error {
 			continue
 		}
 
-		// If page number has not been written yet, copy from input file.
-		if !pageWritten {
-			pageWritten = true
-			if err := c.enc.EncodePage(input.buf.hdr, input.buf.data); err != nil {
-				return fmt.Errorf("copy page %d header: %w", pgno, err)
-			}
-		}
-
 		// Clear buffer.
+		hdr, data := input.buf.hdr, input.buf.data
 		input.buf.hdr = PageHeader{}
+
+		// If page number has not been written yet, copy from input file.
+		if pageWritten {
+			continue
+		} else if pgno > commit {
+			continue // out of range of final database size, skip
+		}
+		pageWritten = true
+
+		if err := c.enc.EncodePage(hdr, data); err != nil {
+			return fmt.Errorf("copy page %d header: %w", pgno, err)
+		}
 	}
 
 	return nil
