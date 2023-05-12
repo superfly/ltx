@@ -47,14 +47,14 @@ Arguments:
 	var w io.Writer = os.Stdout
 	if !*tsv {
 		tw := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
-		defer tw.Flush()
+		defer func() { _ = tw.Flush() }()
 		w = tw
 	}
 
-	fmt.Fprintln(w, "min_txid\tmax_txid\tcommit\tpages\tpreapply\tpostapply\ttimestamp\twal_offset\twal_size\twal_salt")
+	_, _ = fmt.Fprintln(w, "min_txid\tmax_txid\tcommit\tpages\tpreapply\tpostapply\ttimestamp\twal_offset\twal_size\twal_salt")
 	for _, arg := range fs.Args() {
 		if err := c.printFile(w, arg); err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %s\n", arg, err)
+			_, _ = fmt.Fprintf(os.Stderr, "%s: %s\n", arg, err)
 		}
 	}
 
@@ -66,7 +66,7 @@ func (c *ListCommand) printFile(w io.Writer, filename string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	dec := ltx.NewDecoder(f)
 	if err := dec.Verify(); err != nil {
@@ -79,9 +79,9 @@ func (c *ListCommand) printFile(w io.Writer, filename string) error {
 		timestamp = ""
 	}
 
-	fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%016x\t%016x\t%s\t%d\t%d\t%08x %08x\n",
-		ltx.FormatTXID(dec.Header().MinTXID),
-		ltx.FormatTXID(dec.Header().MaxTXID),
+	_, _ = fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%016x\t%016x\t%s\t%d\t%d\t%08x %08x\n",
+		dec.Header().MinTXID.String(),
+		dec.Header().MaxTXID.String(),
 		dec.Header().Commit,
 		dec.PageN(),
 		dec.Header().PreApplyChecksum,

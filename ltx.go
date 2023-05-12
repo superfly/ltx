@@ -58,7 +58,7 @@ const (
 
 // Pos represents the transactional position of a database.
 type Pos struct {
-	TXID              uint64
+	TXID              TXID
 	PostApplyChecksum uint64
 }
 
@@ -75,7 +75,7 @@ func (p Pos) IsZero() bool {
 // Marshal serializes the position into JSON.
 func (p Pos) MarshalJSON() ([]byte, error) {
 	var v posJSON
-	v.TXID = FormatTXID(p.TXID)
+	v.TXID = p.TXID.String()
 	v.PostApplyChecksum = fmt.Sprintf("%016x", p.PostApplyChecksum)
 	return json.Marshal(v)
 }
@@ -116,6 +116,51 @@ func (e *PosMismatchError) Error() string {
 	return fmt.Sprintf("ltx position mismatch (%s)", e.Pos)
 }
 
+// TXID represents a transaction ID.
+type TXID uint64
+
+// ParseTXID parses a 16-character hex string into a transaction ID.
+func ParseTXID(s string) (TXID, error) {
+	if len(s) != 16 {
+		return 0, fmt.Errorf("invalid formatted transaction id length: %q", s)
+	}
+	v, err := strconv.ParseUint(s, 16, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid transaction id format: %q", s)
+	}
+	return TXID(v), nil
+}
+
+// String returns id formatted as a fixed-width hex number.
+func (t TXID) String() string {
+	return fmt.Sprintf("%016x", uint64(t))
+}
+
+func (t TXID) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + t.String() + `"`), nil
+}
+
+func (t *TXID) UnmarshalJSON(data []byte) (err error) {
+	var s *string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("cannot unmarshal TXID from JSON value")
+	}
+
+	// Set to zero if value is nil.
+	if s == nil {
+		*t = 0
+		return nil
+	}
+
+	txID, err := ParseTXID(*s)
+	if err != nil {
+		return fmt.Errorf("cannot parse TXID from JSON string: %q", *s)
+	}
+	*t = TXID(txID)
+
+	return nil
+}
+
 // Header flags.
 const (
 	HeaderFlagMask = uint32(0x00000001)
@@ -129,8 +174,8 @@ type Header struct {
 	Flags            uint32 // reserved flags
 	PageSize         uint32 // page size, in bytes
 	Commit           uint32 // db size after transaction, in pages
-	MinTXID          uint64 // minimum transaction ID
-	MaxTXID          uint64 // maximum transaction ID
+	MinTXID          TXID   // minimum transaction ID
+	MaxTXID          TXID   // maximum transaction ID
 	Timestamp        int64  // milliseconds since unix epoch
 	PreApplyChecksum uint64 // rolling checksum of database before applying this LTX file
 	WALOffset        int64  // file offset from original WAL; zero if journal
@@ -219,8 +264,8 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint32(b[4:], h.Flags)
 	binary.BigEndian.PutUint32(b[8:], h.PageSize)
 	binary.BigEndian.PutUint32(b[12:], h.Commit)
-	binary.BigEndian.PutUint64(b[16:], h.MinTXID)
-	binary.BigEndian.PutUint64(b[24:], h.MaxTXID)
+	binary.BigEndian.PutUint64(b[16:], uint64(h.MinTXID))
+	binary.BigEndian.PutUint64(b[24:], uint64(h.MaxTXID))
 	binary.BigEndian.PutUint64(b[32:], uint64(h.Timestamp))
 	binary.BigEndian.PutUint64(b[40:], h.PreApplyChecksum)
 	binary.BigEndian.PutUint64(b[48:], uint64(h.WALOffset))
@@ -240,8 +285,8 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.Flags = binary.BigEndian.Uint32(b[4:])
 	h.PageSize = binary.BigEndian.Uint32(b[8:])
 	h.Commit = binary.BigEndian.Uint32(b[12:])
-	h.MinTXID = binary.BigEndian.Uint64(b[16:])
-	h.MaxTXID = binary.BigEndian.Uint64(b[24:])
+	h.MinTXID = TXID(binary.BigEndian.Uint64(b[16:]))
+	h.MaxTXID = TXID(binary.BigEndian.Uint64(b[24:]))
 	h.Timestamp = int64(binary.BigEndian.Uint64(b[32:]))
 	h.PreApplyChecksum = binary.BigEndian.Uint64(b[40:])
 	h.WALOffset = int64(binary.BigEndian.Uint64(b[48:]))
@@ -386,40 +431,23 @@ func ChecksumReader(r io.Reader, pageSize int) (uint64, error) {
 	return chksum, nil
 }
 
-// FormatTXID returns id formatted as a fixed-width hex number.
-func FormatTXID(id uint64) string {
-	return fmt.Sprintf("%016x", id)
-}
-
-// ParseTXID parses a 16-character hex string into a transaction ID.
-func ParseTXID(s string) (uint64, error) {
-	if len(s) != 16 {
-		return 0, fmt.Errorf("invalid formatted transaction id length: %q", s)
-	}
-	v, err := strconv.ParseUint(s, 16, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid transaction id format: %q", s)
-	}
-	return uint64(v), nil
-}
-
 // ParseFilename parses a transaction range from an LTX file.
-func ParseFilename(name string) (minTXID, maxTXID uint64, err error) {
+func ParseFilename(name string) (minTXID, maxTXID TXID, err error) {
 	a := filenameRegex.FindStringSubmatch(name)
 	if a == nil {
 		return 0, 0, fmt.Errorf("invalid ltx filename: %s", name)
 	}
 
-	minTXID, _ = strconv.ParseUint(a[1], 16, 64)
-	maxTXID, _ = strconv.ParseUint(a[2], 16, 64)
-	return minTXID, maxTXID, nil
+	min, _ := strconv.ParseUint(a[1], 16, 64)
+	max, _ := strconv.ParseUint(a[2], 16, 64)
+	return TXID(min), TXID(max), nil
 }
 
 var filenameRegex = regexp.MustCompile(`^([0-9a-f]{16})-([0-9a-f]{16})\.ltx$`)
 
 // FormatFilename returns an LTX filename representing a range of transactions.
-func FormatFilename(minTXID, maxTXID uint64) string {
-	return fmt.Sprintf("%016x-%016x.ltx", minTXID, maxTXID)
+func FormatFilename(minTXID, maxTXID TXID) string {
+	return fmt.Sprintf("%s-%s.ltx", minTXID.String(), maxTXID.String())
 }
 
 const PENDING_BYTE = 0x40000000

@@ -45,7 +45,7 @@ Usage:
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Read database header to determine page size.
 	buf := make([]byte, 100)
