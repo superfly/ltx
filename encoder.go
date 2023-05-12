@@ -123,8 +123,12 @@ func (enc *Encoder) EncodeHeader(hdr Header) error {
 	// Use a compressed writer for the body if LZ4 is enabled.
 	if enc.header.Flags&HeaderFlagCompressLZ4 != 0 {
 		zw := lz4.NewWriter(enc.underlying)
-		zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb)) // minimize memory allocation
-		zw.Apply(lz4.CompressionLevelOption(lz4.Fast))
+		if err := zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb)); err != nil { // minimize memory allocation
+			return fmt.Errorf("cannot set lz4 block size: %w", err)
+		}
+		if err := zw.Apply(lz4.CompressionLevelOption(lz4.Fast)); err != nil {
+			return fmt.Errorf("cannot set lz4 compression level: %w", err)
+		}
 		enc.w = zw
 	}
 

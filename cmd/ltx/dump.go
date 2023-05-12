@@ -47,7 +47,7 @@ Arguments:
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	dec := ltx.NewDecoder(f)
 
@@ -59,8 +59,8 @@ Arguments:
 	fmt.Printf("Flags:     0x%08x\n", hdr.Flags)
 	fmt.Printf("Page size: %d\n", hdr.PageSize)
 	fmt.Printf("Commit:    %d\n", hdr.Commit)
-	fmt.Printf("Min TXID:  %s (%d)\n", ltx.FormatTXID(hdr.MinTXID), hdr.MinTXID)
-	fmt.Printf("Max TXID:  %s (%d)\n", ltx.FormatTXID(hdr.MaxTXID), hdr.MaxTXID)
+	fmt.Printf("Min TXID:  %s (%d)\n", hdr.MinTXID.String(), hdr.MinTXID)
+	fmt.Printf("Max TXID:  %s (%d)\n", hdr.MaxTXID.String(), hdr.MaxTXID)
 	fmt.Printf("Timestamp: %s (%d)\n", time.UnixMilli(int64(hdr.Timestamp)).UTC().Format(time.RFC3339Nano), hdr.Timestamp)
 	fmt.Printf("Pre-apply: %016x\n", hdr.PreApplyChecksum)
 	fmt.Printf("WAL offset: %d\n", hdr.WALOffset)

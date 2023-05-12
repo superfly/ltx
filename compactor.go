@@ -51,8 +51,8 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 		}
 		if prevHdr.MaxTXID+1 != hdr.MinTXID {
 			return fmt.Errorf("non-contiguous transaction ids in input files: (%s,%s) -> (%s,%s)",
-				FormatTXID(prevHdr.MinTXID), FormatTXID(prevHdr.MaxTXID),
-				FormatTXID(hdr.MinTXID), FormatTXID(hdr.MaxTXID),
+				prevHdr.MinTXID.String(), prevHdr.MaxTXID.String(),
+				hdr.MinTXID.String(), hdr.MaxTXID.String(),
 			)
 		}
 	}

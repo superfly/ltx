@@ -3,6 +3,7 @@ package ltx_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -245,9 +246,9 @@ func TestParseFilename(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		if min, max, err := ltx.ParseFilename("0000000000000001-00000000000003e8.ltx"); err != nil {
 			t.Fatal(err)
-		} else if got, want := min, uint64(1); got != want {
+		} else if got, want := min, ltx.TXID(1); got != want {
 			t.Fatalf("min=%d, want %d", got, want)
-		} else if got, want := max, uint64(1000); got != want {
+		} else if got, want := max, ltx.TXID(1000); got != want {
 			t.Fatalf("max=%d, want %d", got, want)
 		}
 	})
@@ -287,14 +288,72 @@ func TestChecksumReader(t *testing.T) {
 	})
 }
 
-func TestFormatTXID(t *testing.T) {
-	if got, want := ltx.FormatTXID(0), "0000000000000000"; got != want {
+func TestTXID_MarshalJSON(t *testing.T) {
+	t.Run("OK", func(t *testing.T) {
+		txID := ltx.TXID(1000)
+		if buf, err := json.Marshal(txID); err != nil {
+			t.Fatal(err)
+		} else if got, want := string(buf), `"00000000000003e8"`; got != want {
+			t.Fatalf("got=%q, want %q", got, want)
+		}
+	})
+	t.Run("Map", func(t *testing.T) {
+		m := map[string]ltx.TXID{"x": 1000, "y": 2000}
+		if buf, err := json.Marshal(m); err != nil {
+			t.Fatal(err)
+		} else if got, want := string(buf), `{"x":"00000000000003e8","y":"00000000000007d0"}`; got != want {
+			t.Fatalf("got=%q, want %q", got, want)
+		}
+	})
+}
+
+func TestTXID_UnmarshalJSON(t *testing.T) {
+	t.Run("OK", func(t *testing.T) {
+		var txID ltx.TXID
+		if err := json.Unmarshal([]byte(`"00000000000003e8"`), &txID); err != nil {
+			t.Fatal(err)
+		} else if got, want := txID, ltx.TXID(1000); got != want {
+			t.Fatalf("got=%q, want %q", got, want)
+		}
+	})
+	t.Run("Null", func(t *testing.T) {
+		var txID ltx.TXID
+		if err := json.Unmarshal([]byte(`null`), &txID); err != nil {
+			t.Fatal(err)
+		} else if got, want := txID, ltx.TXID(0); got != want {
+			t.Fatalf("got=%q, want %q", got, want)
+		}
+	})
+	t.Run("Map", func(t *testing.T) {
+		var m map[string]ltx.TXID
+		if err := json.Unmarshal([]byte(`{"x":"00000000000003e8","y":"00000000000007d0"}`), &m); err != nil {
+			t.Fatal(err)
+		} else if !reflect.DeepEqual(m, map[string]ltx.TXID{"x": 1000, "y": 2000}) {
+			t.Fatalf("unexpected map: %#v", m)
+		}
+	})
+	t.Run("ErrInvalidType", func(t *testing.T) {
+		var txID ltx.TXID
+		if err := json.Unmarshal([]byte(`123`), &txID); err == nil || err.Error() != `cannot unmarshal TXID from JSON value` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrStringFormat", func(t *testing.T) {
+		var txID ltx.TXID
+		if err := json.Unmarshal([]byte(`"xyz"`), &txID); err == nil || err.Error() != `cannot parse TXID from JSON string: "xyz"` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+}
+
+func TestTXID_String(t *testing.T) {
+	if got, want := ltx.TXID(0).String(), "0000000000000000"; got != want {
 		t.Fatalf("got=%q, want %q", got, want)
 	}
-	if got, want := ltx.FormatTXID(1000), "00000000000003e8"; got != want {
+	if got, want := ltx.TXID(1000).String(), "00000000000003e8"; got != want {
 		t.Fatalf("got=%q, want %q", got, want)
 	}
-	if got, want := ltx.FormatTXID(math.MaxUint64), "ffffffffffffffff"; got != want {
+	if got, want := ltx.TXID(math.MaxUint64).String(), "ffffffffffffffff"; got != want {
 		t.Fatalf("got=%q, want %q", got, want)
 	}
 }
@@ -303,19 +362,19 @@ func TestParseTXID(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		if v, err := ltx.ParseTXID("0000000000000000"); err != nil {
 			t.Fatal(err)
-		} else if got, want := v, uint64(0); got != want {
+		} else if got, want := v, ltx.TXID(0); got != want {
 			t.Fatalf("got=%d, want %d", got, want)
 		}
 
 		if v, err := ltx.ParseTXID("00000000000003e8"); err != nil {
 			t.Fatal(err)
-		} else if got, want := v, uint64(1000); got != want {
+		} else if got, want := v, ltx.TXID(1000); got != want {
 			t.Fatalf("got=%d, want %d", got, want)
 		}
 
 		if v, err := ltx.ParseTXID("ffffffffffffffff"); err != nil {
 			t.Fatal(err)
-		} else if got, want := v, uint64(math.MaxUint64); got != want {
+		} else if got, want := v, ltx.TXID(math.MaxUint64); got != want {
 			t.Fatalf("got=%d, want %d", got, want)
 		}
 	})
@@ -406,18 +465,7 @@ func createFile(tb testing.TB, name string) *os.File {
 	if err != nil {
 		tb.Fatal(err)
 	}
-	tb.Cleanup(func() { f.Close() })
-	return f
-}
-
-// openFile opens a file and returns the file handle. Fail on error.
-func openFile(tb testing.TB, name string) *os.File {
-	tb.Helper()
-	f, err := os.Open(name)
-	if err != nil {
-		tb.Fatal(err)
-	}
-	tb.Cleanup(func() { f.Close() })
+	tb.Cleanup(func() { _ = f.Close() })
 	return f
 }
 
