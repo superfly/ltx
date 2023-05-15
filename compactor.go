@@ -67,7 +67,7 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 	minHdr := c.inputs[0].dec.Header()
 	maxHdr := c.inputs[len(c.inputs)-1].dec.Header()
 
-	// Generate output header.
+	// Generate output header. Skip NodeID as it's not meaningful after compaction.
 	if err := c.enc.EncodeHeader(Header{
 		Version:          Version,
 		PageSize:         minHdr.PageSize,
