@@ -23,6 +23,12 @@ func NewCompactor(w io.Writer, rdrs []io.Reader) *Compactor {
 	return c
 }
 
+// Header returns the LTX header of the compacted file. Only valid after successful Compact().
+func (c *Compactor) Header() Header { return c.enc.Header() }
+
+// Trailer returns the LTX trailer of the compacted file. Only valid after successful Compact().
+func (c *Compactor) Trailer() Trailer { return c.enc.Trailer() }
+
 // Compact merges the input readers into a single LTX writer.
 func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 	if len(c.inputs) == 0 {
