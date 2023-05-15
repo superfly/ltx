@@ -44,6 +44,14 @@ func TestCompactor_Compact(t *testing.T) {
 		spec := readFileSpec(t, &output, int64(output.Len()))
 		assertFileSpecEqual(t, spec, input)
 		// assertFileSpecChecksum(t, spec, input) // output should be exact copy
+
+		// Ensure header/trailer available.
+		if got, want := c.Header(), input.Header; got != want {
+			t.Fatalf("Header()=%#v, want %#v", got, want)
+		}
+		if got, want := c.Trailer(), input.Trailer; got != want {
+			t.Fatalf("Trailer()=%#v, want %#v", got, want)
+		}
 	})
 
 	t.Run("SnapshotPageDataOnly", func(t *testing.T) {
