@@ -15,6 +15,16 @@ import (
 	"github.com/superfly/ltx"
 )
 
+func TestNewPos(t *testing.T) {
+	pos := ltx.NewPos(1000, 2000)
+	if got, want := pos.TXID, ltx.TXID(1000); got != want {
+		t.Fatalf("TXID=%s, want %s", got, want)
+	}
+	if got, want := pos.PostApplyChecksum, uint64(2000); got != want {
+		t.Fatalf("PostApplyChecksum=%v, want %v", got, want)
+	}
+}
+
 func TestHeader_Validate(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		hdr := ltx.Header{

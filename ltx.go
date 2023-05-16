@@ -62,6 +62,14 @@ type Pos struct {
 	PostApplyChecksum uint64
 }
 
+// NewPos returns a new instance of Pos.
+func NewPos(txID TXID, postApplyChecksum uint64) Pos {
+	return Pos{
+		TXID:              txID,
+		PostApplyChecksum: postApplyChecksum,
+	}
+}
+
 // String returns a string representation of the position.
 func (p Pos) String() string {
 	return fmt.Sprintf("%s/%016x", p.TXID, p.PostApplyChecksum)
