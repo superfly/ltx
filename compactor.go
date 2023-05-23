@@ -11,6 +11,9 @@ import (
 type Compactor struct {
 	enc    *Encoder
 	inputs []*compactorInput
+
+	// These flags will be set when encoding the header.
+	HeaderFlags uint32
 }
 
 // NewCompactor returns a new instance of Compactor with default settings.
@@ -70,6 +73,7 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 	// Generate output header. Skip NodeID as it's not meaningful after compaction.
 	if err := c.enc.EncodeHeader(Header{
 		Version:          Version,
+		Flags:            c.HeaderFlags,
 		PageSize:         minHdr.PageSize,
 		Commit:           maxHdr.Commit,
 		MinTXID:          minHdr.MinTXID,
