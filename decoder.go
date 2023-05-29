@@ -173,6 +173,35 @@ func (dec *Decoder) Verify() error {
 	return nil
 }
 
+// DecodeDatabaseTo decodes the LTX file as a SQLite database to w.
+// The LTX file MUST be a snapshot file.
+func (dec *Decoder) DecodeDatabaseTo(w io.Writer) error {
+	if err := dec.DecodeHeader(); err != nil {
+		return fmt.Errorf("decode header: %w", err)
+	} else if !dec.header.IsSnapshot() {
+		return fmt.Errorf("cannot decode non-snapshot LTX file to SQLite database")
+	}
+
+	var pageHeader PageHeader
+	data := make([]byte, dec.header.PageSize)
+	for i := 0; ; i++ {
+		if err := dec.DecodePage(&pageHeader, data); err == io.EOF {
+			break
+		} else if err != nil {
+			return fmt.Errorf("decode page %d: %w", i, err)
+		}
+
+		if _, err := w.Write(data); err != nil {
+			return fmt.Errorf("write page %d: %w", i, err)
+		}
+	}
+
+	if err := dec.Close(); err != nil {
+		return fmt.Errorf("close decoder: %w", err)
+	}
+	return nil
+}
+
 func (dec *Decoder) writeToHash(b []byte) {
 	_, _ = dec.hash.Write(b)
 	dec.n += int64(len(b))
