@@ -104,7 +104,7 @@ func TestCompactor_Compact(t *testing.T) {
 				Commit:    3,
 				MinTXID:   1,
 				MaxTXID:   2,
-				Timestamp: 1000,
+				Timestamp: 2000,
 			},
 			Pages: []ltx.PageSpec{
 				{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x91}, 1024)},
@@ -113,7 +113,7 @@ func TestCompactor_Compact(t *testing.T) {
 			},
 			Trailer: ltx.Trailer{
 				PostApplyChecksum: ltx.ChecksumFlag | 2,
-				FileChecksum:      0xa67e07c7914f91ed,
+				FileChecksum:      0xc7387b8aaccc8d35,
 			},
 		})
 	})
@@ -183,7 +183,7 @@ func TestCompactor_Compact(t *testing.T) {
 				Commit:           5,
 				MinTXID:          2,
 				MaxTXID:          9,
-				Timestamp:        1000,
+				Timestamp:        3000,
 				PreApplyChecksum: ltx.ChecksumFlag | 2,
 			},
 			Pages: []ltx.PageSpec{
@@ -194,7 +194,7 @@ func TestCompactor_Compact(t *testing.T) {
 			},
 			Trailer: ltx.Trailer{
 				PostApplyChecksum: ltx.ChecksumFlag | 9,
-				FileChecksum:      0xdf64da57d1e8e39f,
+				FileChecksum:      0xead633959f3c67a8,
 			},
 		})
 	})
@@ -227,7 +227,7 @@ func TestCompactor_Compact(t *testing.T) {
 				Commit:           2,
 				MinTXID:          2,
 				MaxTXID:          5,
-				Timestamp:        1000,
+				Timestamp:        2000,
 				PreApplyChecksum: ltx.ChecksumFlag | 2,
 			},
 			Pages: []ltx.PageSpec{
@@ -235,7 +235,7 @@ func TestCompactor_Compact(t *testing.T) {
 			},
 			Trailer: ltx.Trailer{
 				PostApplyChecksum: ltx.ChecksumFlag | 5,
-				FileChecksum:      0xf2685845dfc970a4,
+				FileChecksum:      0xf688132c3904f118,
 			},
 		})
 	})

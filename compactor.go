@@ -78,7 +78,7 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 		Commit:           maxHdr.Commit,
 		MinTXID:          minHdr.MinTXID,
 		MaxTXID:          maxHdr.MaxTXID,
-		Timestamp:        minHdr.Timestamp,
+		Timestamp:        maxHdr.Timestamp,
 		PreApplyChecksum: minHdr.PreApplyChecksum,
 	}); err != nil {
 		return fmt.Errorf("write header: %w", err)
