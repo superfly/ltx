@@ -47,6 +47,8 @@ func (m *Main) Run(ctx context.Context, args []string) (err error) {
 		return NewChecksumCommand().Run(ctx, args)
 	case "dump":
 		return NewDumpCommand().Run(ctx, args)
+	case "encode-db":
+		return NewEncodeDBCommand().Run(ctx, args)
 	case "list":
 		return NewListCommand().Run(ctx, args)
 	case "verify":
