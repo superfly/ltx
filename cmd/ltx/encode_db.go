@@ -128,6 +128,8 @@ func (c *EncodeDBCommand) readSQLiteDatabaseHeader(rd io.Reader) (ord io.Reader,
 	b := make([]byte, SQLITE_DATABASE_HEADER_SIZE)
 	if _, err := io.ReadFull(rd, b); err == io.ErrUnexpectedEOF {
 		return ord, hdr, fmt.Errorf("invalid database header")
+	} else if err == io.EOF {
+		return ord, hdr, fmt.Errorf("empty database")
 	} else if err != nil {
 		return ord, hdr, err
 	} else if !bytes.Equal(b[:len(SQLITE_DATABASE_HEADER_STRING)], []byte(SQLITE_DATABASE_HEADER_STRING)) {
