@@ -49,6 +49,13 @@ func TestEncoder(t *testing.T) {
 		if err := enc.Close(); err != nil {
 			t.Fatal(err)
 		}
+
+		if got, want := enc.Header().PreApplyPos(), (ltx.Pos{4, ltx.ChecksumFlag | 5}); got != want {
+			t.Fatalf("PreApplyPos=%s, want %s", got, want)
+		}
+		if got, want := enc.PostApplyPos(), (ltx.Pos{6, ltx.ChecksumFlag | 6}); got != want {
+			t.Fatalf("PostApplyPos=%s, want %s", got, want)
+		}
 	})
 }
 

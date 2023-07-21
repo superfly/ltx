@@ -43,6 +43,15 @@ func (enc *Encoder) Header() Header { return enc.header }
 // Trailer returns a copy of the trailer. File checksum available after Close().
 func (enc *Encoder) Trailer() Trailer { return enc.trailer }
 
+// PostApplyPos returns the replication position after underlying the LTX file is applied.
+// Only valid after successful Close().
+func (enc *Encoder) PostApplyPos() Pos {
+	return Pos{
+		TXID:              enc.header.MaxTXID,
+		PostApplyChecksum: enc.trailer.PostApplyChecksum,
+	}
+}
+
 // SetPostApplyChecksum sets the post-apply checksum of the database.
 // Must call before Close().
 func (enc *Encoder) SetPostApplyChecksum(chksum uint64) {

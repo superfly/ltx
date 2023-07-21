@@ -45,6 +45,15 @@ func (dec *Decoder) Header() Header { return dec.header }
 // Trailer returns a copy of the trailer. File checksum available after Close().
 func (dec *Decoder) Trailer() Trailer { return dec.trailer }
 
+// PostApplyPos returns the replication position after underlying the LTX file is applied.
+// Only valid after successful Close().
+func (dec *Decoder) PostApplyPos() Pos {
+	return Pos{
+		TXID:              dec.header.MaxTXID,
+		PostApplyChecksum: dec.trailer.PostApplyChecksum,
+	}
+}
+
 // Close verifies the reader is at the end of the file and that the checksum matches.
 func (dec *Decoder) Close() error {
 	if dec.state == stateClosed {
