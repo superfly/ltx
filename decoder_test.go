@@ -76,6 +76,13 @@ func testDecoder(t *testing.T, name string, flags uint32) {
 		if err := dec.Close(); err != nil {
 			t.Fatal(err)
 		}
+
+		if got, want := dec.Header().PreApplyPos(), (ltx.Pos{}); got != want {
+			t.Fatalf("PreApplyPos=%s, want %s", got, want)
+		}
+		if got, want := dec.PostApplyPos(), (ltx.Pos{1, ltx.ChecksumFlag | 1}); got != want {
+			t.Fatalf("PostApplyPos=%s, want %s", got, want)
+		}
 	})
 }
 

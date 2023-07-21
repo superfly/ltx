@@ -265,6 +265,14 @@ func (h *Header) Validate() error {
 	return nil
 }
 
+// PreApplyPos returns the replication position before the LTX file is applies.
+func (h Header) PreApplyPos() Pos {
+	return Pos{
+		TXID:              h.MinTXID - 1,
+		PostApplyChecksum: h.PreApplyChecksum,
+	}
+}
+
 // MarshalBinary encodes h to a byte slice.
 func (h *Header) MarshalBinary() ([]byte, error) {
 	b := make([]byte, HeaderSize)
