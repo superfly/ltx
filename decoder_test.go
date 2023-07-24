@@ -27,18 +27,10 @@ func testDecoder(t *testing.T, name string, flags uint32) {
 				Timestamp: 1000,
 			},
 			Pages: []ltx.PageSpec{
-				{
-					Header: ltx.PageHeader{Pgno: 1},
-					Data:   bytes.Repeat([]byte("2"), 1024),
-				},
-				{
-					Header: ltx.PageHeader{Pgno: 2},
-					Data:   bytes.Repeat([]byte("3"), 1024),
-				},
+				{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte("2"), 1024)},
+				{Header: ltx.PageHeader{Pgno: 2}, Data: bytes.Repeat([]byte("3"), 1024)},
 			},
-			Trailer: ltx.Trailer{
-				PostApplyChecksum: ltx.ChecksumFlag | 1,
-			},
+			Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 1},
 		}
 
 		// Write spec to file.
@@ -84,6 +76,51 @@ func testDecoder(t *testing.T, name string, flags uint32) {
 			t.Fatalf("PostApplyPos=%s, want %s", got, want)
 		}
 	})
+}
+
+func TestDecoder_Decode_CommitZero(t *testing.T) {
+	spec := &ltx.FileSpec{
+		Header: ltx.Header{
+			Version:   1,
+			Flags:     0,
+			PageSize:  1024,
+			Commit:    0,
+			MinTXID:   1,
+			MaxTXID:   1,
+			Timestamp: 1000,
+		},
+		Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag},
+	}
+
+	// Write spec to file.
+	var buf bytes.Buffer
+	writeFileSpec(t, &buf, spec)
+
+	// Read and verify data matches spec.
+	dec := ltx.NewDecoder(&buf)
+
+	// Verify header.
+	if err := dec.DecodeHeader(); err != nil {
+		t.Fatal(err)
+	} else if got, want := dec.Header(), spec.Header; !reflect.DeepEqual(got, want) {
+		t.Fatalf("header mismatch:\ngot=%#v\nwant=%#v", got, want)
+	}
+
+	if err := dec.DecodePage(&ltx.PageHeader{}, make([]byte, 1024)); err != io.EOF {
+		t.Fatal("expected page header eof")
+	}
+
+	// Close reader to verify integrity.
+	if err := dec.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := dec.Header().PreApplyPos(), (ltx.Pos{}); got != want {
+		t.Fatalf("PreApplyPos=%s, want %s", got, want)
+	}
+	if got, want := dec.PostApplyPos(), (ltx.Pos{1, ltx.ChecksumFlag}); got != want {
+		t.Fatalf("PostApplyPos=%s, want %s", got, want)
+	}
 }
 
 func TestDecoder_DecodeDatabaseTo(t *testing.T) {
