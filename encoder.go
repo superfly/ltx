@@ -92,6 +92,11 @@ func (enc *Encoder) Close() error {
 	enc.writeToHash(b1[:TrailerChecksumOffset])
 	enc.trailer.FileChecksum = ChecksumFlag | enc.hash.Sum64()
 
+	// Validate trailer now that we have the file checksum.
+	if err := enc.trailer.Validate(); err != nil {
+		return fmt.Errorf("validate trailer: %w", err)
+	}
+
 	// Remarshal with correct checksum.
 	b1, err = enc.trailer.MarshalBinary()
 	if err != nil {

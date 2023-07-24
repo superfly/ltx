@@ -73,7 +73,10 @@ func TestEncode_Close(t *testing.T) {
 			t.Fatal(err)
 		} else if err := enc.EncodePage(ltx.PageHeader{Pgno: 1}, make([]byte, 1024)); err != nil {
 			t.Fatal(err)
-		} else if err := enc.Close(); err != nil {
+		}
+
+		enc.SetPostApplyChecksum(ltx.ChecksumFlag)
+		if err := enc.Close(); err != nil {
 			t.Fatal(err)
 		}
 

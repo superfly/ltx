@@ -335,7 +335,7 @@ func (t *Trailer) Validate() error {
 	if t.PostApplyChecksum == 0 {
 		return fmt.Errorf("post-apply checksum required")
 	} else if t.PostApplyChecksum&ChecksumFlag == 0 {
-		return fmt.Errorf("invalid post-checksum format")
+		return fmt.Errorf("invalid post-apply checksum format")
 	}
 
 	if t.FileChecksum == 0 {
