@@ -211,9 +211,6 @@ func (h *Header) Validate() error {
 	if !IsValidPageSize(h.PageSize) {
 		return fmt.Errorf("invalid page size: %d", h.PageSize)
 	}
-	if h.Commit == 0 {
-		return fmt.Errorf("commit record required")
-	}
 	if h.MinTXID == 0 {
 		return fmt.Errorf("minimum transaction id required")
 	}

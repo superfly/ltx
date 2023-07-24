@@ -43,6 +43,19 @@ func TestHeader_Validate(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	t.Run("CommitZero", func(t *testing.T) {
+		hdr := ltx.Header{
+			Version:          1,
+			PageSize:         1024,
+			Commit:           0,
+			MinTXID:          5,
+			MaxTXID:          5,
+			PreApplyChecksum: ltx.ChecksumFlag,
+		}
+		if err := hdr.Validate(); err != nil {
+			t.Fatal(err)
+		}
+	})
 	t.Run("ErrVersion", func(t *testing.T) {
 		hdr := ltx.Header{}
 		if err := hdr.Validate(); err == nil || err.Error() != `invalid version` {
@@ -58,12 +71,6 @@ func TestHeader_Validate(t *testing.T) {
 	t.Run("ErrInvalidPageSize", func(t *testing.T) {
 		hdr := ltx.Header{Version: 1, PageSize: 1000}
 		if err := hdr.Validate(); err == nil || err.Error() != `invalid page size: 1000` {
-			t.Fatalf("unexpected error: %s", err)
-		}
-	})
-	t.Run("ErrCommitRecordRequired", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024}
-		if err := hdr.Validate(); err == nil || err.Error() != `commit record required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})

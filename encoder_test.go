@@ -57,6 +57,47 @@ func TestEncoder(t *testing.T) {
 			t.Fatalf("PostApplyPos=%s, want %s", got, want)
 		}
 	})
+
+	// Ensure encoder can generate LTX files with a zero commit and no pages.
+	t.Run("CommitZero", func(t *testing.T) {
+		enc := ltx.NewEncoder(createFile(t, filepath.Join(t.TempDir(), "ltx")))
+		if err := enc.EncodeHeader(ltx.Header{
+			Version:          1,
+			PageSize:         4096,
+			Commit:           0,
+			MinTXID:          5,
+			MaxTXID:          6,
+			Timestamp:        2000,
+			PreApplyChecksum: ltx.ChecksumFlag | 5,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		enc.SetPostApplyChecksum(ltx.ChecksumFlag)
+		if err := enc.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		if got, want := enc.Header().PreApplyPos(), (ltx.Pos{4, ltx.ChecksumFlag | 5}); got != want {
+			t.Fatalf("PreApplyPos=%s, want %s", got, want)
+		}
+		if got, want := enc.PostApplyPos(), (ltx.Pos{6, ltx.ChecksumFlag}); got != want {
+			t.Fatalf("PostApplyPos=%s, want %s", got, want)
+		}
+	})
+
+	// Ensure encoder has an empty post-apply checksum when encoding a deletion file.
+	t.Run("ErrInvalidCommitZeroPostApplyChecksum", func(t *testing.T) {
+		enc := ltx.NewEncoder(createFile(t, filepath.Join(t.TempDir(), "ltx")))
+		if err := enc.EncodeHeader(ltx.Header{Version: 1, PageSize: 4096, Commit: 0, MinTXID: 5, MaxTXID: 6, Timestamp: 2000, PreApplyChecksum: ltx.ChecksumFlag | 5}); err != nil {
+			t.Fatal(err)
+		}
+
+		enc.SetPostApplyChecksum(ltx.ChecksumFlag | 1)
+		if err := enc.Close(); err == nil || err.Error() != `post-apply checksum must be empty for zero-length database` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
 }
 
 func TestEncode_Close(t *testing.T) {

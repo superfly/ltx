@@ -97,6 +97,11 @@ func (enc *Encoder) Close() error {
 		return fmt.Errorf("validate trailer: %w", err)
 	}
 
+	// If we are encoding a deletion LTX file then ensure that we have an empty checksum.
+	if enc.header.Commit == 0 && enc.trailer.PostApplyChecksum != ChecksumFlag {
+		return fmt.Errorf("post-apply checksum must be empty for zero-length database")
+	}
+
 	// Remarshal with correct checksum.
 	b1, err = enc.trailer.MarshalBinary()
 	if err != nil {
