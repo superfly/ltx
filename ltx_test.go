@@ -189,6 +189,66 @@ func TestHeader_UnmarshalBinary(t *testing.T) {
 	})
 }
 
+func TestPeekHeader(t *testing.T) {
+	t.Run("OK", func(t *testing.T) {
+		hdr := ltx.Header{
+			Version:          ltx.Version,
+			Flags:            0,
+			PageSize:         1024,
+			Commit:           1006,
+			MinTXID:          1007,
+			MaxTXID:          1008,
+			Timestamp:        1009,
+			PreApplyChecksum: 1011,
+			WALSalt1:         1012,
+			WALSalt2:         1013,
+			WALOffset:        1014,
+			WALSize:          1015,
+		}
+		b, err := hdr.MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var buf bytes.Buffer
+		buf.Write(b)
+		buf.Write([]byte("foobar"))
+
+		// Read the header once.
+		other, r, err := ltx.PeekHeader(&buf)
+		if err != nil {
+			t.Fatal(err)
+		} else if !reflect.DeepEqual(hdr, other) {
+			t.Fatalf("mismatch:\ngot=%#v\nwant=%#v", hdr, other)
+		}
+
+		// Read it again from the returned reader.
+		if other, _, err = ltx.PeekHeader(r); err != nil {
+			t.Fatal(err)
+		} else if !reflect.DeepEqual(hdr, other) {
+			t.Fatalf("mismatch:\ngot=%#v\nwant=%#v", hdr, other)
+		}
+
+		// Read the rest of the data.
+		if trailing, err := io.ReadAll(r); err != nil {
+			t.Fatal(err)
+		} else if got, want := string(trailing), "foobar"; got != want {
+			t.Fatalf("trailing=%s, want %s", got, want)
+		}
+	})
+
+	t.Run("EOF", func(t *testing.T) {
+		if _, _, err := ltx.PeekHeader(bytes.NewReader(nil)); err != io.EOF {
+			t.Fatal(err)
+		}
+	})
+	t.Run("ErrUnexpectedEOF", func(t *testing.T) {
+		if _, _, err := ltx.PeekHeader(bytes.NewReader([]byte("foo"))); err != io.ErrUnexpectedEOF {
+			t.Fatal(err)
+		}
+	})
+}
+
 func TestPageHeader_Validate(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		hdr := ltx.PageHeader{Pgno: 1}

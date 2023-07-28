@@ -2,6 +2,7 @@
 package ltx
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -314,6 +315,21 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.Version = Version
 
 	return nil
+}
+
+// PeekHeader reads & unmarshals the header from r.
+// It returns a new io.Reader that prepends the header data back on.
+func PeekHeader(r io.Reader) (Header, io.Reader, error) {
+	buf := make([]byte, HeaderSize)
+	n, err := io.ReadFull(r, buf)
+	r = io.MultiReader(bytes.NewReader(buf[:n]), r)
+	if err != nil {
+		return Header{}, r, err
+	}
+
+	var hdr Header
+	err = hdr.UnmarshalBinary(buf)
+	return hdr, r, err
 }
 
 // IsValidHeaderFlags returns true unless flags outside the valid mask are set.
