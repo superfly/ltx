@@ -18,9 +18,10 @@ type Decoder struct {
 	trailer Trailer
 	state   string
 
-	hash  hash.Hash64
-	pageN int   // pages read
-	n     int64 // bytes read
+	chksum uint64
+	hash   hash.Hash64
+	pageN  int   // pages read
+	n      int64 // bytes read
 }
 
 // NewDecoder returns a new instance of Decoder.
@@ -29,6 +30,7 @@ func NewDecoder(r io.Reader) *Decoder {
 		underlying: r,
 		r:          r,
 		state:      stateHeader,
+		chksum:     ChecksumFlag,
 		hash:       crc64.New(crc64.MakeTable(crc64.ISO)),
 	}
 }
@@ -75,6 +77,13 @@ func (dec *Decoder) Close() error {
 	// Compare checksum with checksum in trailer.
 	if chksum := ChecksumFlag | dec.hash.Sum64(); chksum != dec.trailer.FileChecksum {
 		return ErrChecksumMismatch
+	}
+
+	// Verify post-apply checksum for snapshot files.
+	if dec.header.IsSnapshot() {
+		if dec.trailer.PostApplyChecksum != dec.chksum {
+			return fmt.Errorf("post-apply checksum in trailer (%016x) does not match calculated checksum (%016x)", dec.trailer.PostApplyChecksum, dec.chksum)
+		}
 	}
 
 	// Update state to mark as closed.
@@ -155,6 +164,13 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 	}
 	dec.writeToHash(data)
 	dec.pageN++
+
+	// Calculate checksum while decoding snapshots.
+	if dec.header.IsSnapshot() {
+		if hdr.Pgno != LockPgno(dec.header.PageSize) {
+			dec.chksum = ChecksumFlag | (dec.chksum ^ ChecksumPage(hdr.Pgno, data))
+		}
+	}
 
 	return nil
 }

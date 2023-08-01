@@ -28,7 +28,7 @@ func TestCompactor_Compact(t *testing.T) {
 				},
 			},
 			Trailer: ltx.Trailer{
-				PostApplyChecksum: ltx.ChecksumFlag | 1,
+				PostApplyChecksum: 0xeb1a999231044ddd,
 				FileChecksum:      0x897cc5d024cd382a,
 			},
 		}
@@ -71,7 +71,7 @@ func TestCompactor_Compact(t *testing.T) {
 					{Header: ltx.PageHeader{Pgno: 3}, Data: bytes.Repeat([]byte{0x83}, 1024)},
 				},
 				Trailer: ltx.Trailer{
-					PostApplyChecksum: ltx.ChecksumFlag | 1,
+					PostApplyChecksum: 0x8a249272ad9f7dea,
 				},
 			},
 			&ltx.FileSpec{
@@ -82,14 +82,14 @@ func TestCompactor_Compact(t *testing.T) {
 					MinTXID:          2,
 					MaxTXID:          2,
 					Timestamp:        2000,
-					PreApplyChecksum: ltx.ChecksumFlag | 2,
+					PreApplyChecksum: 0x8a249272ad9f7dea,
 				},
 				Pages: []ltx.PageSpec{
 					{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x91}, 1024)},
 					{Header: ltx.PageHeader{Pgno: 3}, Data: bytes.Repeat([]byte{0x93}, 1024)},
 				},
 				Trailer: ltx.Trailer{
-					PostApplyChecksum: ltx.ChecksumFlag | 2,
+					PostApplyChecksum: 0x8a249272ad9f7dea,
 				},
 			},
 		)
@@ -112,8 +112,8 @@ func TestCompactor_Compact(t *testing.T) {
 				{Header: ltx.PageHeader{Pgno: 3}, Data: bytes.Repeat([]byte{0x93}, 1024)},
 			},
 			Trailer: ltx.Trailer{
-				PostApplyChecksum: ltx.ChecksumFlag | 2,
-				FileChecksum:      0xc7387b8aaccc8d35,
+				PostApplyChecksum: 0x8a249272ad9f7dea,
+				FileChecksum:      0xcaf341fe1e6cddfb,
 			},
 		})
 	})
@@ -137,7 +137,8 @@ func TestCompactor_Compact(t *testing.T) {
 				},
 			},
 			&ltx.FileSpec{
-				Header: ltx.Header{Version: 1,
+				Header: ltx.Header{
+					Version:          1,
 					PageSize:         1024,
 					Commit:           3,
 					MinTXID:          4,
