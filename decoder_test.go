@@ -30,7 +30,7 @@ func testDecoder(t *testing.T, name string, flags uint32) {
 				{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte("2"), 1024)},
 				{Header: ltx.PageHeader{Pgno: 2}, Data: bytes.Repeat([]byte("3"), 1024)},
 			},
-			Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 1},
+			Trailer: ltx.Trailer{PostApplyChecksum: 0xe1899b6d587aaaaa},
 		}
 
 		// Write spec to file.
@@ -72,7 +72,7 @@ func testDecoder(t *testing.T, name string, flags uint32) {
 		if got, want := dec.Header().PreApplyPos(), (ltx.Pos{}); got != want {
 			t.Fatalf("PreApplyPos=%s, want %s", got, want)
 		}
-		if got, want := dec.PostApplyPos(), (ltx.Pos{1, ltx.ChecksumFlag | 1}); got != want {
+		if got, want := dec.PostApplyPos(), (ltx.Pos{1, 0xe1899b6d587aaaaa}); got != want {
 			t.Fatalf("PostApplyPos=%s, want %s", got, want)
 		}
 	})
@@ -131,7 +131,7 @@ func TestDecoder_DecodeDatabaseTo(t *testing.T) {
 				{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte("2"), 512)},
 				{Header: ltx.PageHeader{Pgno: 2}, Data: bytes.Repeat([]byte("3"), 512)},
 			},
-			Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 1},
+			Trailer: ltx.Trailer{PostApplyChecksum: 0x8b87423eeeeeeeee},
 		}
 
 		// Decode serialized LTX file.
