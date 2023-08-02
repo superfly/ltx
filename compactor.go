@@ -14,11 +14,19 @@ type Compactor struct {
 
 	// These flags will be set when encoding the header.
 	HeaderFlags uint32
+
+	// If true, the compactor will not validate that input files have contiguous
+	// transaction IDs. This is false by default but can be enabled when
+	// rebuilding snapshots with missing transactions.
+	AllowNonContiguousTXIDs bool
 }
 
 // NewCompactor returns a new instance of Compactor with default settings.
 func NewCompactor(w io.Writer, rdrs []io.Reader) *Compactor {
-	c := &Compactor{enc: NewEncoder(w)}
+	c := &Compactor{
+		enc: NewEncoder(w),
+	}
+
 	c.inputs = make([]*compactorInput, len(rdrs))
 	for i := range c.inputs {
 		c.inputs[i] = &compactorInput{dec: NewDecoder(rdrs[i])}
@@ -58,7 +66,7 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 		if prevHdr.PageSize != hdr.PageSize {
 			return fmt.Errorf("input files have mismatched page sizes: %d != %d", prevHdr.PageSize, hdr.PageSize)
 		}
-		if prevHdr.MaxTXID+1 != hdr.MinTXID {
+		if !c.AllowNonContiguousTXIDs && prevHdr.MaxTXID+1 != hdr.MinTXID {
 			return fmt.Errorf("non-contiguous transaction ids in input files: (%s,%s) -> (%s,%s)",
 				prevHdr.MinTXID.String(), prevHdr.MaxTXID.String(),
 				hdr.MinTXID.String(), hdr.MaxTXID.String(),

@@ -281,4 +281,25 @@ func TestCompactor_Compact(t *testing.T) {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
+	t.Run("AllowNonContiguousTXID", func(t *testing.T) {
+		bufs := make([]bytes.Buffer, 2)
+		writeFileSpec(t, &bufs[0], &ltx.FileSpec{
+			Header:  ltx.Header{Version: 1, PageSize: 1024, Commit: 1, MinTXID: 1, MaxTXID: 2, Timestamp: 1000},
+			Pages:   []ltx.PageSpec{{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x81}, 1024)}},
+			Trailer: ltx.Trailer{PostApplyChecksum: 0xeb953fc47685d740},
+		})
+
+		writeFileSpec(t, &bufs[1], &ltx.FileSpec{
+			Header:  ltx.Header{Version: 1, PageSize: 1024, Commit: 1, MinTXID: 4, MaxTXID: 4, Timestamp: 1000, PreApplyChecksum: ltx.ChecksumFlag | 2},
+			Pages:   []ltx.PageSpec{{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x91}, 1024)}},
+			Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 1},
+		})
+
+		// Compact files together.
+		c := ltx.NewCompactor(io.Discard, []io.Reader{&bufs[0], &bufs[1]})
+		c.AllowNonContiguousTXIDs = true
+		if err := c.Compact(context.Background()); err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
 }
