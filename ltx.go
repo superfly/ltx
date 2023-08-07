@@ -71,6 +71,28 @@ func NewPos(txID TXID, postApplyChecksum uint64) Pos {
 	}
 }
 
+// ParsePos parses Pos from its string representation.
+func ParsePos(s string) (Pos, error) {
+	if len(s) != 33 {
+		return Pos{}, fmt.Errorf("invalid formatted position length: %q", s)
+	}
+
+	txid, err := ParseTXID(s[:16])
+	if err != nil {
+		return Pos{}, err
+	}
+
+	checksum, err := strconv.ParseUint(s[17:], 16, 64)
+	if err != nil {
+		return Pos{}, fmt.Errorf("invalid checksum format: %q", s[17:])
+	}
+
+	return Pos{
+		TXID:              txid,
+		PostApplyChecksum: checksum,
+	}, nil
+}
+
 // String returns a string representation of the position.
 func (p Pos) String() string {
 	return fmt.Sprintf("%s/%016x", p.TXID, p.PostApplyChecksum)

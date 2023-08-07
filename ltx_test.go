@@ -25,6 +25,28 @@ func TestNewPos(t *testing.T) {
 	}
 }
 
+func TestPos_String(t *testing.T) {
+	pos := ltx.NewPos(1000, 2000)
+	if got, want := pos.String(), "00000000000003e8/00000000000007d0"; got != want {
+		t.Fatalf("Pos = %s, want = %s", got, want)
+	}
+}
+
+func TestParsePos(t *testing.T) {
+	t.Run("OK", func(t *testing.T) {
+		if v, err := ltx.ParsePos("00000000000003e8/00000000000007d0"); err != nil {
+			t.Fatal(err)
+		} else if got, want := v, ltx.NewPos(1000, 2000); got != want {
+			t.Fatalf("got=%d, want %d", got, want)
+		}
+	})
+	t.Run("ErrTooShort", func(t *testing.T) {
+		if _, err := ltx.ParsePos("00000000000003e8"); err == nil || err.Error() != `invalid formatted position length: "00000000000003e8"` {
+			t.Fatal(err)
+		}
+	})
+}
+
 func TestHeader_Validate(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		hdr := ltx.Header{
