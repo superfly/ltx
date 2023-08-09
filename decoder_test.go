@@ -147,6 +147,46 @@ func TestDecoder_DecodeDatabaseTo(t *testing.T) {
 		}
 	})
 
+	t.Run("WithLockPage", func(t *testing.T) {
+		lockPgno := ltx.LockPgno(4096)
+		commit := lockPgno + 10
+
+		var want bytes.Buffer
+		var buf bytes.Buffer
+		enc := ltx.NewEncoder(&buf)
+		if err := enc.EncodeHeader(ltx.Header{Version: 1, Flags: 0, PageSize: 4096, Commit: commit, MinTXID: 1, MaxTXID: 2, Timestamp: 1000}); err != nil {
+			t.Fatal(err)
+		}
+
+		pageData := bytes.Repeat([]byte("x"), 4096)
+		for pgno := uint32(1); pgno <= commit; pgno++ {
+			if pgno == lockPgno {
+				_, _ = want.Write(make([]byte, 4096))
+				continue
+			}
+
+			_, _ = want.Write(pageData)
+			if err := enc.EncodePage(ltx.PageHeader{Pgno: pgno}, pageData); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		enc.SetPostApplyChecksum(0xc19b668c376662c7)
+		if err := enc.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		// Decode serialized LTX file.
+		dec := ltx.NewDecoder(&buf)
+
+		var out bytes.Buffer
+		if err := dec.DecodeDatabaseTo(&out); err != nil {
+			t.Fatal(err)
+		} else if got, want := out.Bytes(), want.Bytes(); !bytes.Equal(got, want) {
+			t.Fatal("output mismatch")
+		}
+	})
+
 	t.Run("ErrNonSnapshot", func(t *testing.T) {
 		spec := &ltx.FileSpec{
 			Header: ltx.Header{Version: 1, Flags: 0, PageSize: 512, Commit: 2, MinTXID: 2, MaxTXID: 2, Timestamp: 1000, PreApplyChecksum: ltx.ChecksumFlag | 1},
