@@ -72,6 +72,8 @@ func (dec *Decoder) Close() error {
 		return fmt.Errorf("unmarshal trailer: %w", err)
 	}
 
+	// TODO: Ensure last read page is equal to the commit for snapshot LTX files
+
 	dec.writeToHash(b[:TrailerChecksumOffset])
 
 	// Compare checksum with checksum in trailer.
@@ -203,22 +205,42 @@ func (dec *Decoder) Verify() error {
 func (dec *Decoder) DecodeDatabaseTo(w io.Writer) error {
 	if err := dec.DecodeHeader(); err != nil {
 		return fmt.Errorf("decode header: %w", err)
-	} else if !dec.header.IsSnapshot() {
+	}
+
+	hdr := dec.Header()
+	lockPgno := hdr.LockPgno()
+	if !dec.header.IsSnapshot() {
 		return fmt.Errorf("cannot decode non-snapshot LTX file to SQLite database")
 	}
 
 	var pageHeader PageHeader
 	data := make([]byte, dec.header.PageSize)
-	for i := 0; ; i++ {
-		if err := dec.DecodePage(&pageHeader, data); err == io.EOF {
-			break
-		} else if err != nil {
-			return fmt.Errorf("decode page %d: %w", i, err)
+	for pgno := uint32(1); pgno <= hdr.Commit; pgno++ {
+		if pgno == lockPgno {
+			// Write empty page for lock page.
+			for i := range data {
+				data[i] = 0
+			}
+		} else {
+			// Otherwise read the page from the LTX decoder.
+			if err := dec.DecodePage(&pageHeader, data); err != nil {
+				return fmt.Errorf("decode page %d: %w", pgno, err)
+			} else if pageHeader.Pgno != pgno {
+				return fmt.Errorf("unexpected pgno while decoding page: read %d, expected %d", pageHeader.Pgno, pgno)
+			}
 		}
 
 		if _, err := w.Write(data); err != nil {
-			return fmt.Errorf("write page %d: %w", i, err)
+			return fmt.Errorf("write page %d: %w", pgno, err)
 		}
+	}
+
+	// Issue one more final read and expect to see an EOF. This is required so
+	// that the decoder can successfully close and validate.
+	if err := dec.DecodePage(&pageHeader, data); err == nil {
+		return fmt.Errorf("unexpected page %d after commit %d", pageHeader.Pgno, hdr.Commit)
+	} else if err != io.EOF {
+		return fmt.Errorf("unexpected error decoding after end of database: %w", err)
 	}
 
 	if err := dec.Close(); err != nil {

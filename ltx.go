@@ -223,6 +223,11 @@ func (h *Header) IsSnapshot() bool {
 	return h.MinTXID == 1
 }
 
+// LockPgno returns the lock page number based on the header's page size.
+func (h *Header) LockPgno() uint32 {
+	return LockPgno(h.PageSize)
+}
+
 // Validate returns an error if h is invalid.
 func (h *Header) Validate() error {
 	if h.Version != Version {
