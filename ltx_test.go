@@ -11,6 +11,7 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/superfly/ltx"
 )
@@ -528,6 +529,44 @@ func TestParseTXID(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestFormatTimestamp(t *testing.T) {
+	for _, tt := range []struct {
+		t    time.Time
+		want string
+	}{
+		{time.Date(2000, 10, 20, 30, 40, 50, 0, time.UTC), "2000-10-21T06:40:50.000Z"},
+		{time.Date(2000, 10, 20, 30, 40, 50, 123000000, time.UTC), "2000-10-21T06:40:50.123Z"},
+		{time.Date(2000, 10, 20, 30, 40, 50, 120000000, time.UTC), "2000-10-21T06:40:50.120Z"},
+		{time.Date(2000, 10, 20, 30, 40, 50, 100000000, time.UTC), "2000-10-21T06:40:50.100Z"},
+		{time.Date(2000, 10, 20, 30, 40, 50, 100000, time.UTC), "2000-10-21T06:40:50.000Z"}, // submillisecond
+	} {
+		if got := ltx.FormatTimestamp(tt.t); got != tt.want {
+			t.Fatalf("got=%s, want %s", got, tt.want)
+		}
+	}
+}
+
+func TestParseTimestamp(t *testing.T) {
+	for _, tt := range []struct {
+		str  string
+		want time.Time
+	}{
+		{"2000-10-21T06:40:50.000Z", time.Date(2000, 10, 20, 30, 40, 50, 0, time.UTC)},
+		{"2000-10-21T06:40:50.123Z", time.Date(2000, 10, 20, 30, 40, 50, 123000000, time.UTC)},
+		{"2000-10-21T06:40:50.120Z", time.Date(2000, 10, 20, 30, 40, 50, 120000000, time.UTC)},
+		{"2000-10-21T06:40:50.100Z", time.Date(2000, 10, 20, 30, 40, 50, 100000000, time.UTC)},
+		{"2000-10-21T06:40:50Z", time.Date(2000, 10, 20, 30, 40, 50, 0, time.UTC)},
+		{"2000-10-21T06:40:50.000123Z", time.Date(2000, 10, 20, 30, 40, 50, 0, time.UTC)},
+		{"2000-10-21T06:40:50.000000123Z", time.Date(2000, 10, 20, 30, 40, 50, 0, time.UTC)},
+	} {
+		if got, err := ltx.ParseTimestamp(tt.str); err != nil {
+			t.Fatal(err)
+		} else if !got.Equal(tt.want) {
+			t.Fatalf("got=%s, want %s", got, tt.want)
+		}
+	}
 }
 
 func BenchmarkChecksumPage(b *testing.B) {
