@@ -12,6 +12,7 @@ import (
 	"io"
 	"regexp"
 	"strconv"
+	"time"
 )
 
 const (
@@ -28,6 +29,10 @@ const (
 	PageHeaderSize = 4
 	TrailerSize    = 16
 )
+
+// RFC3339Milli is the standard time format for LTX timestamps.
+// It uses fixed-width millisecond resolution which makes it sortable.
+const RFC3339Milli = "2006-01-02T15:04:05.000Z07:00"
 
 // Checksum size & positions.
 const (
@@ -497,6 +502,29 @@ func ParseFilename(name string) (minTXID, maxTXID TXID, err error) {
 	min, _ := strconv.ParseUint(a[1], 16, 64)
 	max, _ := strconv.ParseUint(a[2], 16, 64)
 	return TXID(min), TXID(max), nil
+}
+
+// FormatTimestamp returns t with a fixed-width, millisecond-resolution UTC format.
+func FormatTimestamp(t time.Time) string {
+	return t.UTC().Format(RFC3339Milli)
+}
+
+// ParseTimestamp parses a timestamp as RFC3339Milli (fixed-width) but will
+// fallback to RFC3339Nano if it fails. This is to support timestamps written
+// before the introduction of the standard time format.
+func ParseTimestamp(value string) (time.Time, error) {
+	// Attempt standard format first.
+	t, err := time.Parse(RFC3339Milli, value)
+	if err == nil {
+		return t, nil
+	}
+
+	// If the standard fails, fallback to stdlib format but truncate to milliseconds.
+	t2, err2 := time.Parse(time.RFC3339Nano, value)
+	if err2 != nil {
+		return t, err // use original error on failure.
+	}
+	return t2.Truncate(time.Millisecond), nil
 }
 
 var filenameRegex = regexp.MustCompile(`^([0-9a-f]{16})-([0-9a-f]{16})\.ltx$`)
