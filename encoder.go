@@ -54,7 +54,7 @@ func (enc *Encoder) PostApplyPos() Pos {
 
 // SetPostApplyChecksum sets the post-apply checksum of the database.
 // Must call before Close().
-func (enc *Encoder) SetPostApplyChecksum(chksum uint64) {
+func (enc *Encoder) SetPostApplyChecksum(chksum Checksum) {
 	enc.trailer.PostApplyChecksum = chksum
 }
 
@@ -90,7 +90,7 @@ func (enc *Encoder) Close() error {
 		return fmt.Errorf("marshal trailer: %w", err)
 	}
 	enc.writeToHash(b1[:TrailerChecksumOffset])
-	enc.trailer.FileChecksum = ChecksumFlag | enc.hash.Sum64()
+	enc.trailer.FileChecksum = ChecksumFlag | Checksum(enc.hash.Sum64())
 
 	// Validate trailer now that we have the file checksum.
 	if err := enc.trailer.Validate(); err != nil {

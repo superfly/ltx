@@ -21,7 +21,7 @@ func TestNewPos(t *testing.T) {
 	if got, want := pos.TXID, ltx.TXID(1000); got != want {
 		t.Fatalf("TXID=%s, want %s", got, want)
 	}
-	if got, want := pos.PostApplyChecksum, uint64(2000); got != want {
+	if got, want := pos.PostApplyChecksum, ltx.Checksum(2000); got != want {
 		t.Fatalf("PostApplyChecksum=%v, want %v", got, want)
 	}
 }
@@ -411,7 +411,7 @@ func TestChecksumReader(t *testing.T) {
 		)
 		if chksum, err := ltx.ChecksumReader(r, 512); err != nil {
 			t.Fatal(err)
-		} else if got, want := chksum, uint64(0xefffffffecd99000); got != want {
+		} else if got, want := chksum, ltx.Checksum(0xefffffffecd99000); got != want {
 			t.Fatalf("got=%x, want %x", got, want)
 		}
 	})
@@ -531,6 +531,113 @@ func TestParseTXID(t *testing.T) {
 	})
 }
 
+func TestChecksum_MarshalJSON(t *testing.T) {
+	t.Run("OK", func(t *testing.T) {
+		chksum := ltx.Checksum(1000)
+		if buf, err := json.Marshal(chksum); err != nil {
+			t.Fatal(err)
+		} else if got, want := string(buf), `"00000000000003e8"`; got != want {
+			t.Fatalf("got=%q, want %q", got, want)
+		}
+	})
+	t.Run("Map", func(t *testing.T) {
+		m := map[string]ltx.Checksum{"x": 1000, "y": 2000}
+		if buf, err := json.Marshal(m); err != nil {
+			t.Fatal(err)
+		} else if got, want := string(buf), `{"x":"00000000000003e8","y":"00000000000007d0"}`; got != want {
+			t.Fatalf("got=%q, want %q", got, want)
+		}
+	})
+}
+
+func TestChecksum_UnmarshalJSON(t *testing.T) {
+	t.Run("OK", func(t *testing.T) {
+		var chksum ltx.Checksum
+		if err := json.Unmarshal([]byte(`"00000000000003e8"`), &chksum); err != nil {
+			t.Fatal(err)
+		} else if got, want := chksum, ltx.Checksum(1000); got != want {
+			t.Fatalf("got=%q, want %q", got, want)
+		}
+	})
+	t.Run("Null", func(t *testing.T) {
+		var chksum ltx.Checksum
+		if err := json.Unmarshal([]byte(`null`), &chksum); err != nil {
+			t.Fatal(err)
+		} else if got, want := chksum, ltx.Checksum(0); got != want {
+			t.Fatalf("got=%q, want %q", got, want)
+		}
+	})
+	t.Run("Map", func(t *testing.T) {
+		var m map[string]ltx.Checksum
+		if err := json.Unmarshal([]byte(`{"x":"00000000000003e8","y":"00000000000007d0"}`), &m); err != nil {
+			t.Fatal(err)
+		} else if !reflect.DeepEqual(m, map[string]ltx.Checksum{"x": 1000, "y": 2000}) {
+			t.Fatalf("unexpected map: %#v", m)
+		}
+	})
+	t.Run("ErrInvalidType", func(t *testing.T) {
+		var chksum ltx.Checksum
+		if err := json.Unmarshal([]byte(`123`), &chksum); err == nil || err.Error() != `cannot unmarshal checksum from JSON value` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrStringFormat", func(t *testing.T) {
+		var chksum ltx.Checksum
+		if err := json.Unmarshal([]byte(`"xyz"`), &chksum); err == nil || err.Error() != `cannot parse checksum from JSON string: "xyz"` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+}
+
+func TestChecksum_String(t *testing.T) {
+	if got, want := ltx.Checksum(0).String(), "0000000000000000"; got != want {
+		t.Fatalf("got=%q, want %q", got, want)
+	}
+	if got, want := ltx.Checksum(1000).String(), "00000000000003e8"; got != want {
+		t.Fatalf("got=%q, want %q", got, want)
+	}
+	if got, want := ltx.Checksum(math.MaxUint64).String(), "ffffffffffffffff"; got != want {
+		t.Fatalf("got=%q, want %q", got, want)
+	}
+}
+
+func TestParseChecksum(t *testing.T) {
+	t.Run("OK", func(t *testing.T) {
+		if v, err := ltx.ParseChecksum("0000000000000000"); err != nil {
+			t.Fatal(err)
+		} else if got, want := v, ltx.Checksum(0); got != want {
+			t.Fatalf("got=%d, want %d", got, want)
+		}
+
+		if v, err := ltx.ParseChecksum("00000000000003e8"); err != nil {
+			t.Fatal(err)
+		} else if got, want := v, ltx.Checksum(1000); got != want {
+			t.Fatalf("got=%d, want %d", got, want)
+		}
+
+		if v, err := ltx.ParseChecksum("ffffffffffffffff"); err != nil {
+			t.Fatal(err)
+		} else if got, want := v, ltx.Checksum(math.MaxUint64); got != want {
+			t.Fatalf("got=%d, want %d", got, want)
+		}
+	})
+	t.Run("ErrTooShort", func(t *testing.T) {
+		if _, err := ltx.ParseChecksum("000000000e38"); err == nil || err.Error() != `invalid formatted checksum length: "000000000e38"` {
+			t.Fatal(err)
+		}
+	})
+	t.Run("ErrTooLong", func(t *testing.T) {
+		if _, err := ltx.ParseChecksum("ffffffffffffffff0"); err == nil || err.Error() != `invalid formatted checksum length: "ffffffffffffffff0"` {
+			t.Fatal(err)
+		}
+	})
+	t.Run("ErrInvalidFormat", func(t *testing.T) {
+		if _, err := ltx.ParseChecksum("xxxxxxxxxxxxxxxx"); err == nil || err.Error() != `invalid checksum format: "xxxxxxxxxxxxxxxx"` {
+			t.Fatal(err)
+		}
+	})
+}
+
 func TestFormatTimestamp(t *testing.T) {
 	for _, tt := range []struct {
 		t    time.Time
@@ -615,7 +722,7 @@ func BenchmarkXOR(b *testing.B) {
 	const pageSize = 4096
 	const pageN = (1 << 30) / pageSize
 
-	m := make(map[uint32]uint64)
+	m := make(map[uint32]ltx.Checksum)
 	page := make([]byte, pageSize)
 	for pgno := uint32(1); pgno <= pageN; pgno++ {
 		_, _ = rand.Read(page)
@@ -625,7 +732,7 @@ func BenchmarkXOR(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		var chksum uint64
+		var chksum ltx.Checksum
 		for pgno := uint32(1); pgno <= pageN; pgno++ {
 			chksum ^= m[pgno]
 		}

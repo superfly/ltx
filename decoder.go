@@ -18,7 +18,7 @@ type Decoder struct {
 	trailer Trailer
 	state   string
 
-	chksum uint64
+	chksum Checksum
 	hash   hash.Hash64
 	pageN  int   // pages read
 	n      int64 // bytes read
@@ -77,14 +77,14 @@ func (dec *Decoder) Close() error {
 	dec.writeToHash(b[:TrailerChecksumOffset])
 
 	// Compare checksum with checksum in trailer.
-	if chksum := ChecksumFlag | dec.hash.Sum64(); chksum != dec.trailer.FileChecksum {
+	if chksum := ChecksumFlag | Checksum(dec.hash.Sum64()); chksum != dec.trailer.FileChecksum {
 		return ErrChecksumMismatch
 	}
 
 	// Verify post-apply checksum for snapshot files.
 	if dec.header.IsSnapshot() {
 		if dec.trailer.PostApplyChecksum != dec.chksum {
-			return fmt.Errorf("post-apply checksum in trailer (%016x) does not match calculated checksum (%016x)", dec.trailer.PostApplyChecksum, dec.chksum)
+			return fmt.Errorf("post-apply checksum in trailer (%s) does not match calculated checksum (%s)", dec.trailer.PostApplyChecksum, dec.chksum)
 		}
 	}
 

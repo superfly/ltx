@@ -52,7 +52,7 @@ var (
 )
 
 // ChecksumFlag is a flag on the checksum to ensure it is non-zero.
-const ChecksumFlag uint64 = 1 << 63
+const ChecksumFlag Checksum = 1 << 63
 
 // internal reader/writer states
 const (
@@ -65,11 +65,11 @@ const (
 // Pos represents the transactional position of a database.
 type Pos struct {
 	TXID              TXID
-	PostApplyChecksum uint64
+	PostApplyChecksum Checksum
 }
 
 // NewPos returns a new instance of Pos.
-func NewPos(txID TXID, postApplyChecksum uint64) Pos {
+func NewPos(txID TXID, postApplyChecksum Checksum) Pos {
 	return Pos{
 		TXID:              txID,
 		PostApplyChecksum: postApplyChecksum,
@@ -87,9 +87,9 @@ func ParsePos(s string) (Pos, error) {
 		return Pos{}, err
 	}
 
-	checksum, err := strconv.ParseUint(s[17:], 16, 64)
+	checksum, err := ParseChecksum(s[17:])
 	if err != nil {
-		return Pos{}, fmt.Errorf("invalid checksum format: %q", s[17:])
+		return Pos{}, err
 	}
 
 	return Pos{
@@ -100,41 +100,12 @@ func ParsePos(s string) (Pos, error) {
 
 // String returns a string representation of the position.
 func (p Pos) String() string {
-	return fmt.Sprintf("%s/%016x", p.TXID, p.PostApplyChecksum)
+	return fmt.Sprintf("%s/%s", p.TXID, p.PostApplyChecksum)
 }
 
 // IsZero returns true if the position is empty.
 func (p Pos) IsZero() bool {
 	return p == (Pos{})
-}
-
-// Marshal serializes the position into JSON.
-func (p Pos) MarshalJSON() ([]byte, error) {
-	var v posJSON
-	v.TXID = p.TXID.String()
-	v.PostApplyChecksum = fmt.Sprintf("%016x", p.PostApplyChecksum)
-	return json.Marshal(v)
-}
-
-// Unmarshal deserializes the position from JSON.
-func (p *Pos) UnmarshalJSON(data []byte) (err error) {
-	var v posJSON
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-
-	if p.TXID, err = ParseTXID(v.TXID); err != nil {
-		return fmt.Errorf("cannot parse txid: %q", v.TXID)
-	}
-	if p.PostApplyChecksum, err = strconv.ParseUint(v.PostApplyChecksum, 16, 64); err != nil {
-		return fmt.Errorf("cannot parse post-apply checksum: %q", v.PostApplyChecksum)
-	}
-	return nil
-}
-
-type posJSON struct {
-	TXID              string `json:"txid"`
-	PostApplyChecksum string `json:"postApplyChecksum"`
 }
 
 // PosMismatchError is returned when an LTX file is not contiguous with the current position.
@@ -197,6 +168,51 @@ func (t *TXID) UnmarshalJSON(data []byte) (err error) {
 	return nil
 }
 
+// Checksum represents an LTX checksum.
+type Checksum uint64
+
+// ParseChecksum parses a 16-character hex string into a checksum.
+func ParseChecksum(s string) (Checksum, error) {
+	if len(s) != 16 {
+		return 0, fmt.Errorf("invalid formatted checksum length: %q", s)
+	}
+	v, err := strconv.ParseUint(s, 16, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid checksum format: %q", s)
+	}
+	return Checksum(v), nil
+}
+
+// String returns c formatted as a fixed-width hex number.
+func (c Checksum) String() string {
+	return fmt.Sprintf("%016x", uint64(c))
+}
+
+func (c Checksum) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + c.String() + `"`), nil
+}
+
+func (c *Checksum) UnmarshalJSON(data []byte) (err error) {
+	var s *string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("cannot unmarshal checksum from JSON value")
+	}
+
+	// Set to zero if value is nil.
+	if s == nil {
+		*c = 0
+		return nil
+	}
+
+	chksum, err := ParseChecksum(*s)
+	if err != nil {
+		return fmt.Errorf("cannot parse checksum from JSON string: %q", *s)
+	}
+	*c = Checksum(chksum)
+
+	return nil
+}
+
 // Header flags.
 const (
 	HeaderFlagMask = uint32(0x00000001)
@@ -206,19 +222,19 @@ const (
 
 // Header represents the header frame of an LTX file.
 type Header struct {
-	Version          int    // based on magic
-	Flags            uint32 // reserved flags
-	PageSize         uint32 // page size, in bytes
-	Commit           uint32 // db size after transaction, in pages
-	MinTXID          TXID   // minimum transaction ID
-	MaxTXID          TXID   // maximum transaction ID
-	Timestamp        int64  // milliseconds since unix epoch
-	PreApplyChecksum uint64 // rolling checksum of database before applying this LTX file
-	WALOffset        int64  // file offset from original WAL; zero if journal
-	WALSize          int64  // size of original WAL segment; zero if journal
-	WALSalt1         uint32 // header salt-1 from original WAL; zero if journal or compaction
-	WALSalt2         uint32 // header salt-2 from original WAL; zero if journal or compaction
-	NodeID           uint64 // node id where the LTX file was created, zero if unset
+	Version          int      // based on magic
+	Flags            uint32   // reserved flags
+	PageSize         uint32   // page size, in bytes
+	Commit           uint32   // db size after transaction, in pages
+	MinTXID          TXID     // minimum transaction ID
+	MaxTXID          TXID     // maximum transaction ID
+	Timestamp        int64    // milliseconds since unix epoch
+	PreApplyChecksum Checksum // rolling checksum of database before applying this LTX file
+	WALOffset        int64    // file offset from original WAL; zero if journal
+	WALSize          int64    // size of original WAL segment; zero if journal
+	WALSalt1         uint32   // header salt-1 from original WAL; zero if journal or compaction
+	WALSalt2         uint32   // header salt-2 from original WAL; zero if journal or compaction
+	NodeID           uint64   // node id where the LTX file was created, zero if unset
 }
 
 // IsSnapshot returns true if header represents a complete database snapshot.
@@ -313,7 +329,7 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint64(b[16:], uint64(h.MinTXID))
 	binary.BigEndian.PutUint64(b[24:], uint64(h.MaxTXID))
 	binary.BigEndian.PutUint64(b[32:], uint64(h.Timestamp))
-	binary.BigEndian.PutUint64(b[40:], h.PreApplyChecksum)
+	binary.BigEndian.PutUint64(b[40:], uint64(h.PreApplyChecksum))
 	binary.BigEndian.PutUint64(b[48:], uint64(h.WALOffset))
 	binary.BigEndian.PutUint64(b[56:], uint64(h.WALSize))
 	binary.BigEndian.PutUint32(b[64:], h.WALSalt1)
@@ -334,7 +350,7 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.MinTXID = TXID(binary.BigEndian.Uint64(b[16:]))
 	h.MaxTXID = TXID(binary.BigEndian.Uint64(b[24:]))
 	h.Timestamp = int64(binary.BigEndian.Uint64(b[32:]))
-	h.PreApplyChecksum = binary.BigEndian.Uint64(b[40:])
+	h.PreApplyChecksum = Checksum(binary.BigEndian.Uint64(b[40:]))
 	h.WALOffset = int64(binary.BigEndian.Uint64(b[48:]))
 	h.WALSize = int64(binary.BigEndian.Uint64(b[56:]))
 	h.WALSalt1 = binary.BigEndian.Uint32(b[64:])
@@ -371,8 +387,8 @@ func IsValidHeaderFlags(flags uint32) bool {
 
 // Trailer represents the ending frame of an LTX file.
 type Trailer struct {
-	PostApplyChecksum uint64 // rolling checksum of database after this LTX file is applied
-	FileChecksum      uint64 // crc64 checksum of entire file
+	PostApplyChecksum Checksum // rolling checksum of database after this LTX file is applied
+	FileChecksum      Checksum // crc64 checksum of entire file
 }
 
 // Validate returns an error if t is invalid.
@@ -394,8 +410,8 @@ func (t *Trailer) Validate() error {
 // MarshalBinary encodes h to a byte slice.
 func (t *Trailer) MarshalBinary() ([]byte, error) {
 	b := make([]byte, TrailerSize)
-	binary.BigEndian.PutUint64(b[0:], t.PostApplyChecksum)
-	binary.BigEndian.PutUint64(b[8:], t.FileChecksum)
+	binary.BigEndian.PutUint64(b[0:], uint64(t.PostApplyChecksum))
+	binary.BigEndian.PutUint64(b[8:], uint64(t.FileChecksum))
 	return b, nil
 }
 
@@ -405,8 +421,8 @@ func (t *Trailer) UnmarshalBinary(b []byte) error {
 		return io.ErrShortBuffer
 	}
 
-	t.PostApplyChecksum = binary.BigEndian.Uint64(b[0:])
-	t.FileChecksum = binary.BigEndian.Uint64(b[8:])
+	t.PostApplyChecksum = Checksum(binary.BigEndian.Uint64(b[0:]))
+	t.FileChecksum = Checksum(binary.BigEndian.Uint64(b[8:]))
 	return nil
 }
 
@@ -464,23 +480,23 @@ func NewHasher() hash.Hash64 {
 }
 
 // ChecksumPage returns a CRC64 checksum that combines the page number & page data.
-func ChecksumPage(pgno uint32, data []byte) uint64 {
+func ChecksumPage(pgno uint32, data []byte) Checksum {
 	return ChecksumPageWithHasher(NewHasher(), pgno, data)
 }
 
 // ChecksumPageWithHasher returns a CRC64 checksum that combines the page number & page data.
-func ChecksumPageWithHasher(h hash.Hash64, pgno uint32, data []byte) uint64 {
+func ChecksumPageWithHasher(h hash.Hash64, pgno uint32, data []byte) Checksum {
 	h.Reset()
 	_ = binary.Write(h, binary.BigEndian, pgno)
 	_, _ = h.Write(data)
-	return ChecksumFlag | h.Sum64()
+	return ChecksumFlag | Checksum(h.Sum64())
 }
 
 // ChecksumReader reads an entire database file from r and computes its rolling checksum.
-func ChecksumReader(r io.Reader, pageSize int) (uint64, error) {
+func ChecksumReader(r io.Reader, pageSize int) (Checksum, error) {
 	data := make([]byte, pageSize)
 
-	var chksum uint64
+	var chksum Checksum
 	for pgno := uint32(1); ; pgno++ {
 		if _, err := io.ReadFull(r, data); err == io.EOF {
 			break

@@ -62,7 +62,7 @@ Arguments:
 	fmt.Printf("Min TXID:  %s (%d)\n", hdr.MinTXID.String(), hdr.MinTXID)
 	fmt.Printf("Max TXID:  %s (%d)\n", hdr.MaxTXID.String(), hdr.MaxTXID)
 	fmt.Printf("Timestamp: %s (%d)\n", time.UnixMilli(int64(hdr.Timestamp)).UTC().Format(time.RFC3339Nano), hdr.Timestamp)
-	fmt.Printf("Pre-apply: %016x\n", hdr.PreApplyChecksum)
+	fmt.Printf("Pre-apply: %s\n", hdr.PreApplyChecksum)
 	fmt.Printf("WAL offset: %d\n", hdr.WALOffset)
 	fmt.Printf("WAL size:   %d\n", hdr.WALSize)
 	fmt.Printf("WAL salt:   %08x %08x\n", hdr.WALSalt1, hdr.WALSalt2)
@@ -90,8 +90,8 @@ Arguments:
 	trailer := dec.Trailer()
 
 	fmt.Printf("# TRAILER\n")
-	fmt.Printf("Post-apply:    %016x\n", trailer.PostApplyChecksum)
-	fmt.Printf("File Checksum: %016x\n", trailer.FileChecksum)
+	fmt.Printf("Post-apply:    %s\n", trailer.PostApplyChecksum)
+	fmt.Printf("File Checksum: %s\n", trailer.FileChecksum)
 	fmt.Printf("\n")
 	if err != nil {
 		return err
