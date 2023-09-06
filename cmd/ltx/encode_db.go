@@ -72,7 +72,7 @@ Arguments:
 	}
 
 	var flags uint32
-	var postApplyChecksum uint64
+	var postApplyChecksum ltx.Checksum
 	if *compressed {
 		flags |= ltx.HeaderFlagCompressLZ4
 	}

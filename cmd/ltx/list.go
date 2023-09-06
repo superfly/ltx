@@ -79,7 +79,7 @@ func (c *ListCommand) printFile(w io.Writer, filename string) error {
 		timestamp = ""
 	}
 
-	_, _ = fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%016x\t%016x\t%s\t%d\t%d\t%08x %08x\n",
+	_, _ = fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%s\t%s\t%s\t%d\t%d\t%08x %08x\n",
 		dec.Header().MinTXID.String(),
 		dec.Header().MaxTXID.String(),
 		dec.Header().Commit,

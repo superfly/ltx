@@ -46,7 +46,7 @@ Arguments:
 	}
 
 	// Open database file. Create if it doesn't exist.
-	dbFile, err := os.OpenFile(*dbPath, os.O_RDWR|os.O_CREATE, 0666)
+	dbFile, err := os.OpenFile(*dbPath, os.O_RDWR|os.O_CREATE, 0o666)
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (c *ApplyCommand) applyLTXFile(ctx context.Context, dbFile *os.File, filena
 	if err != nil {
 		return fmt.Errorf("compute pre-apply checksum: %w", err)
 	} else if preApplyChecksum != dec.Header().PreApplyChecksum {
-		return fmt.Errorf("pre-apply checksum mismatch: %016x <> %016x", preApplyChecksum, dec.Header().PreApplyChecksum)
+		return fmt.Errorf("pre-apply checksum mismatch: %s <> %s", preApplyChecksum, dec.Header().PreApplyChecksum)
 	}
 
 	// Apply each page to the database.
@@ -119,7 +119,7 @@ func (c *ApplyCommand) applyLTXFile(ctx context.Context, dbFile *os.File, filena
 	if err != nil {
 		return fmt.Errorf("compute post-apply checksum: %w", err)
 	} else if postApplyChecksum != dec.Trailer().PostApplyChecksum {
-		return fmt.Errorf("post-apply checksum mismatch: %016x <> %016x", postApplyChecksum, dec.Trailer().PostApplyChecksum)
+		return fmt.Errorf("post-apply checksum mismatch: %s <> %s", postApplyChecksum, dec.Trailer().PostApplyChecksum)
 	}
 
 	return nil

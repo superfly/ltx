@@ -66,6 +66,6 @@ Usage:
 		return err
 	}
 
-	fmt.Printf("%016x\n", chksum)
+	fmt.Println(chksum)
 	return nil
 }
