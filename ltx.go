@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash"
-	"hash/crc64"
 	"io"
 	"regexp"
 	"strconv"
@@ -164,51 +162,6 @@ func (t *TXID) UnmarshalJSON(data []byte) (err error) {
 		return fmt.Errorf("cannot parse TXID from JSON string: %q", *s)
 	}
 	*t = TXID(txID)
-
-	return nil
-}
-
-// Checksum represents an LTX checksum.
-type Checksum uint64
-
-// ParseChecksum parses a 16-character hex string into a checksum.
-func ParseChecksum(s string) (Checksum, error) {
-	if len(s) != 16 {
-		return 0, fmt.Errorf("invalid formatted checksum length: %q", s)
-	}
-	v, err := strconv.ParseUint(s, 16, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid checksum format: %q", s)
-	}
-	return Checksum(v), nil
-}
-
-// String returns c formatted as a fixed-width hex number.
-func (c Checksum) String() string {
-	return fmt.Sprintf("%016x", uint64(c))
-}
-
-func (c Checksum) MarshalJSON() ([]byte, error) {
-	return []byte(`"` + c.String() + `"`), nil
-}
-
-func (c *Checksum) UnmarshalJSON(data []byte) (err error) {
-	var s *string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return fmt.Errorf("cannot unmarshal checksum from JSON value")
-	}
-
-	// Set to zero if value is nil.
-	if s == nil {
-		*c = 0
-		return nil
-	}
-
-	chksum, err := ParseChecksum(*s)
-	if err != nil {
-		return fmt.Errorf("cannot parse checksum from JSON string: %q", *s)
-	}
-	*c = Checksum(chksum)
 
 	return nil
 }
@@ -472,40 +425,6 @@ func (h *PageHeader) UnmarshalBinary(b []byte) error {
 
 	h.Pgno = binary.BigEndian.Uint32(b[0:])
 	return nil
-}
-
-// NewHasher returns a new CRC64-ISO hasher.
-func NewHasher() hash.Hash64 {
-	return crc64.New(crc64.MakeTable(crc64.ISO))
-}
-
-// ChecksumPage returns a CRC64 checksum that combines the page number & page data.
-func ChecksumPage(pgno uint32, data []byte) Checksum {
-	return ChecksumPageWithHasher(NewHasher(), pgno, data)
-}
-
-// ChecksumPageWithHasher returns a CRC64 checksum that combines the page number & page data.
-func ChecksumPageWithHasher(h hash.Hash64, pgno uint32, data []byte) Checksum {
-	h.Reset()
-	_ = binary.Write(h, binary.BigEndian, pgno)
-	_, _ = h.Write(data)
-	return ChecksumFlag | Checksum(h.Sum64())
-}
-
-// ChecksumReader reads an entire database file from r and computes its rolling checksum.
-func ChecksumReader(r io.Reader, pageSize int) (Checksum, error) {
-	data := make([]byte, pageSize)
-
-	var chksum Checksum
-	for pgno := uint32(1); ; pgno++ {
-		if _, err := io.ReadFull(r, data); err == io.EOF {
-			break
-		} else if err != nil {
-			return chksum, err
-		}
-		chksum = ChecksumFlag | (chksum ^ ChecksumPage(pgno, data))
-	}
-	return chksum, nil
 }
 
 // ParseFilename parses a transaction range from an LTX file.
