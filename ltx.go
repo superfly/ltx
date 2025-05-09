@@ -3,12 +3,14 @@ package ltx
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"time"
 )
@@ -168,9 +170,10 @@ func (t *TXID) UnmarshalJSON(data []byte) (err error) {
 
 // Header flags.
 const (
-	HeaderFlagMask = uint32(0x00000001)
+	HeaderFlagMask = uint32(HeaderFlagCompressLZ4 | HeaderFlagNoChecksum)
 
-	HeaderFlagCompressLZ4 = uint32(0x00000001)
+	HeaderFlagCompressLZ4 = uint32(1 << 0)
+	HeaderFlagNoChecksum  = uint32(1 << 1)
 )
 
 // Header represents the header frame of an LTX file.
@@ -252,7 +255,13 @@ func (h *Header) Validate() error {
 		if h.PreApplyChecksum != 0 {
 			return fmt.Errorf("pre-apply checksum must be zero on snapshots")
 		}
+	} else if h.NoChecksum() {
+		// Ensure no checksums are set if we aren't tracking them.
+		if h.PreApplyChecksum != 0 {
+			return fmt.Errorf("pre-apply checksum not allowed")
+		}
 	} else {
+		// Ensure checksum is set and well-formed if checksum tracking is enabled.
 		if h.PreApplyChecksum == 0 {
 			return fmt.Errorf("pre-apply checksum required on non-snapshot files")
 		}
@@ -262,6 +271,11 @@ func (h *Header) Validate() error {
 	}
 
 	return nil
+}
+
+// NoChecksum returns true if the checksum is not being tracked for this LTX file.
+func (h Header) NoChecksum() bool {
+	return h.Flags&HeaderFlagNoChecksum != 0
 }
 
 // PreApplyPos returns the replication position before the LTX file is applies.
@@ -345,11 +359,17 @@ type Trailer struct {
 }
 
 // Validate returns an error if t is invalid.
-func (t *Trailer) Validate() error {
-	if t.PostApplyChecksum == 0 {
-		return fmt.Errorf("post-apply checksum required")
-	} else if t.PostApplyChecksum&ChecksumFlag == 0 {
-		return fmt.Errorf("invalid post-apply checksum format")
+func (t *Trailer) Validate(h Header) error {
+	if h.NoChecksum() {
+		if t.PostApplyChecksum != 0 {
+			return fmt.Errorf("post-apply checksum not allowed")
+		}
+	} else {
+		if t.PostApplyChecksum == 0 {
+			return fmt.Errorf("post-apply checksum required")
+		} else if t.PostApplyChecksum&ChecksumFlag == 0 {
+			return fmt.Errorf("invalid post-apply checksum format")
+		}
 	}
 
 	if t.FileChecksum == 0 {
@@ -474,4 +494,115 @@ const PENDING_BYTE = 0x40000000
 // LockPgno returns the page number where the PENDING_BYTE exists.
 func LockPgno(pageSize uint32) uint32 {
 	return uint32(PENDING_BYTE/int64(pageSize)) + 1
+}
+
+// FileIterator represents an iterator over a collection of LTX files.
+type FileIterator interface {
+	io.Closer
+
+	// Prepares the next LTX file for reading with the Item() method.
+	// Returns true if another item is available. Returns false if no more
+	// items are available or if an error occured.
+	Next() bool
+
+	// Returns an error that occurred during iteration.
+	Err() error
+
+	// Returns metadata for the currently positioned LTX file.
+	Item() *FileInfo
+}
+
+// SliceFileIterator returns all LTX files from an iterator as a slice.
+func SliceFileIterator(itr FileIterator) ([]*FileInfo, error) {
+	var a []*FileInfo
+	for itr.Next() {
+		a = append(a, itr.Item())
+	}
+	return a, itr.Close()
+}
+
+var _ FileIterator = (*FileInfoSliceIterator)(nil)
+
+// FileInfoSliceIterator represents an iterator for iterating over a slice of LTX files.
+type FileInfoSliceIterator struct {
+	init bool
+	a    []*FileInfo
+}
+
+// NewFileInfoSliceIterator returns a new instance of FileInfoSliceIterator.
+// This function will sort the slice in place before returning the iterator.
+func NewFileInfoSliceIterator(a []*FileInfo) *FileInfoSliceIterator {
+	slices.SortFunc(a, func(x, y *FileInfo) int {
+		if v := cmp.Compare(x.Level, y.Level); v != 0 {
+			return v
+		}
+		return cmp.Compare(x.MinTXID, y.MinTXID)
+	})
+
+	return &FileInfoSliceIterator{a: a}
+}
+
+// Close always returns nil.
+func (itr *FileInfoSliceIterator) Close() error { return nil }
+
+// Next moves to the next wal segment. Returns true if another segment is available.
+func (itr *FileInfoSliceIterator) Next() bool {
+	if !itr.init {
+		itr.init = true
+		return len(itr.a) > 0
+	}
+	itr.a = itr.a[1:]
+	return len(itr.a) > 0
+}
+
+// Err always returns nil.
+func (itr *FileInfoSliceIterator) Err() error { return nil }
+
+// Item returns the metadata from the currently positioned wal segment.
+func (itr *FileInfoSliceIterator) Item() *FileInfo {
+	if len(itr.a) == 0 {
+		return nil
+	}
+	return itr.a[0]
+}
+
+// FileInfo represents file information about an LTX file.
+type FileInfo struct {
+	Level             int
+	MinTXID           TXID
+	MaxTXID           TXID
+	PreApplyChecksum  Checksum
+	PostApplyChecksum Checksum
+	Size              int64
+	CreatedAt         time.Time
+}
+
+// PreApplyPos returns the replication position before the LTX file is applied.
+func (info *FileInfo) PreApplyPos() Pos {
+	return Pos{
+		TXID:              info.MinTXID - 1,
+		PostApplyChecksum: info.PreApplyChecksum,
+	}
+}
+
+// PostApplyPos returns the replication position after the LTX file is applied.
+func (info *FileInfo) Pos() Pos {
+	return Pos{
+		TXID:              info.MaxTXID,
+		PostApplyChecksum: info.PostApplyChecksum,
+	}
+}
+
+// FileInfoSlice represents a slice of WAL segment metadata.
+type FileInfoSlice []*FileInfo
+
+func (a FileInfoSlice) Len() int { return len(a) }
+
+func (a FileInfoSlice) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+
+func (a FileInfoSlice) Less(i, j int) bool {
+	if a[i].Level != a[j].Level {
+		return a[i].Level < a[j].Level
+	}
+	return a[i].MinTXID < a[j].MinTXID
 }

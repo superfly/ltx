@@ -93,7 +93,7 @@ func (enc *Encoder) Close() error {
 	enc.trailer.FileChecksum = ChecksumFlag | Checksum(enc.hash.Sum64())
 
 	// Validate trailer now that we have the file checksum.
-	if err := enc.trailer.Validate(); err != nil {
+	if err := enc.trailer.Validate(enc.header); err != nil {
 		return fmt.Errorf("validate trailer: %w", err)
 	}
 

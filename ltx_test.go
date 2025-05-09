@@ -86,8 +86,8 @@ func TestHeader_Validate(t *testing.T) {
 		}
 	})
 	t.Run("ErrFlags", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, Flags: 2}
-		if err := hdr.Validate(); err == nil || err.Error() != `invalid flags: 0x00000002` {
+		hdr := ltx.Header{Version: 1, Flags: 1 << 3}
+		if err := hdr.Validate(); err == nil || err.Error() != `invalid flags: 0x00000008` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
@@ -315,31 +315,37 @@ func TestTrailer_Validate(t *testing.T) {
 			PostApplyChecksum: ltx.ChecksumFlag | 1,
 			FileChecksum:      ltx.ChecksumFlag | 2,
 		}
-		if err := trailer.Validate(); err != nil {
+		if err := trailer.Validate(ltx.Header{}); err != nil {
 			t.Fatal(err)
+		}
+	})
+	t.Run("ErrPostApplyChecksumNotAllowed", func(t *testing.T) {
+		trailer := ltx.Trailer{PostApplyChecksum: 1}
+		if err := trailer.Validate(ltx.Header{Flags: ltx.HeaderFlagNoChecksum}); err == nil || err.Error() != `post-apply checksum not allowed` {
+			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrPostApplyChecksumRequired", func(t *testing.T) {
 		trailer := ltx.Trailer{}
-		if err := trailer.Validate(); err == nil || err.Error() != `post-apply checksum required` {
+		if err := trailer.Validate(ltx.Header{}); err == nil || err.Error() != `post-apply checksum required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrInvalidPostApplyChecksum", func(t *testing.T) {
 		trailer := ltx.Trailer{PostApplyChecksum: 1}
-		if err := trailer.Validate(); err == nil || err.Error() != `invalid post-apply checksum format` {
+		if err := trailer.Validate(ltx.Header{}); err == nil || err.Error() != `invalid post-apply checksum format` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrFileChecksumRequired", func(t *testing.T) {
 		trailer := ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag}
-		if err := trailer.Validate(); err == nil || err.Error() != `file checksum required` {
+		if err := trailer.Validate(ltx.Header{}); err == nil || err.Error() != `file checksum required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrInvalidFileChecksum", func(t *testing.T) {
 		trailer := ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag, FileChecksum: 1}
-		if err := trailer.Validate(); err == nil || err.Error() != `invalid file checksum format` {
+		if err := trailer.Validate(ltx.Header{}); err == nil || err.Error() != `invalid file checksum format` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
