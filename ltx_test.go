@@ -133,18 +133,6 @@ func TestHeader_Validate(t *testing.T) {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
-	t.Run("ErrWALSizeRequiredWithWALSalt", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALSalt2: 100, WALOffset: 1000}
-		if err := hdr.Validate(); err == nil || err.Error() != `wal size required if salt exists` {
-			t.Fatalf("unexpected error: %s", err)
-		}
-	})
-	t.Run("ErrWALSizeRequiredWithWALOffset", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALOffset: 1000}
-		if err := hdr.Validate(); err == nil || err.Error() != `wal size required if wal offset exists` {
-			t.Fatalf("unexpected error: %s", err)
-		}
-	})
 	t.Run("ErrWALOffsetRequiredWithWALSize", func(t *testing.T) {
 		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALSize: 1000}
 		if err := hdr.Validate(); err == nil || err.Error() != `wal offset required if wal size exists` {

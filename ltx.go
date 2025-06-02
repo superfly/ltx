@@ -237,14 +237,8 @@ func (h *Header) Validate() error {
 		if h.WALOffset == 0 {
 			return fmt.Errorf("wal offset required if salt exists")
 		}
-		if h.WALSize == 0 {
-			return fmt.Errorf("wal size required if salt exists")
-		}
 	}
 
-	if h.WALOffset != 0 && h.WALSize == 0 {
-		return fmt.Errorf("wal size required if wal offset exists")
-	}
 	if h.WALOffset == 0 && h.WALSize != 0 {
 		return fmt.Errorf("wal offset required if wal size exists")
 	}
