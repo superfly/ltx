@@ -139,7 +139,7 @@ func (c *Compactor) writePageBlock(ctx context.Context) error {
 }
 
 // fillPageBuffers reads the next page frame into each input buffer.
-func (c *Compactor) fillPageBuffers(ctx context.Context) (pgno uint32, err error) {
+func (c *Compactor) fillPageBuffers(_ context.Context) (pgno uint32, err error) {
 	for i := range c.inputs {
 		input := c.inputs[i]
 
@@ -161,7 +161,7 @@ func (c *Compactor) fillPageBuffers(ctx context.Context) (pgno uint32, err error
 }
 
 // writePageBuffer writes the buffer with a matching pgno from the latest input.
-func (c *Compactor) writePageBuffer(ctx context.Context, pgno uint32) error {
+func (c *Compactor) writePageBuffer(_ context.Context, pgno uint32) error {
 	commit := c.enc.Header().Commit
 
 	var pageWritten bool

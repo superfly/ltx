@@ -755,7 +755,7 @@ func writeFileSpec(tb testing.TB, w io.Writer, spec *ltx.FileSpec) int64 {
 }
 
 // readFileSpec is a helper function for reading a spec from a file.
-func readFileSpec(tb testing.TB, r io.Reader, size int64) *ltx.FileSpec {
+func readFileSpec(tb testing.TB, r io.Reader) *ltx.FileSpec {
 	tb.Helper()
 	var spec ltx.FileSpec
 	if _, err := spec.ReadFrom(r); err != nil {
@@ -783,7 +783,7 @@ func compactFileSpecs(tb testing.TB, inputs ...*ltx.FileSpec) (*ltx.FileSpec, er
 	if err := c.Compact(context.Background()); err != nil {
 		return nil, err
 	}
-	return readFileSpec(tb, &output, int64(output.Len())), nil
+	return readFileSpec(tb, &output), nil
 }
 
 // assertFileSpecEqual checks x & y for equality. Fail on inequality.

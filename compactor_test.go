@@ -41,7 +41,7 @@ func TestCompactor_Compact(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		spec := readFileSpec(t, &output, int64(output.Len()))
+		spec := readFileSpec(t, &output)
 		assertFileSpecEqual(t, spec, input)
 		// assertFileSpecChecksum(t, spec, input) // output should be exact copy
 
