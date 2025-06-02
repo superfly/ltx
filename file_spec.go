@@ -39,7 +39,7 @@ func (s *FileSpec) WriteTo(dst io.Writer) (n int64, err error) {
 }
 
 // ReadFromFile encodes a file spec to a file. Always return n of zero.
-func (s *FileSpec) ReadFrom(src io.Reader) (n int, err error) {
+func (s *FileSpec) ReadFrom(src io.Reader) (n int64, err error) {
 	dec := NewDecoder(src)
 
 	// Read header frame and initialize spec slices to correct size.
@@ -65,7 +65,7 @@ func (s *FileSpec) ReadFrom(src io.Reader) (n int, err error) {
 	}
 	s.Trailer = dec.Trailer()
 
-	return int(dec.N()), nil
+	return int64(dec.N()), nil
 }
 
 // GoString returns the Go representation of s.

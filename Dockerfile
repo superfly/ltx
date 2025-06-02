@@ -1,4 +1,4 @@
-FROM golang:1.19 as builder
+FROM golang:1.24 AS builder
 
 WORKDIR /src/ltx
 COPY . .

@@ -86,8 +86,8 @@ func TestHeader_Validate(t *testing.T) {
 		}
 	})
 	t.Run("ErrFlags", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, Flags: 2}
-		if err := hdr.Validate(); err == nil || err.Error() != `invalid flags: 0x00000002` {
+		hdr := ltx.Header{Version: 1, Flags: 1 << 3}
+		if err := hdr.Validate(); err == nil || err.Error() != `invalid flags: 0x00000008` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
@@ -130,18 +130,6 @@ func TestHeader_Validate(t *testing.T) {
 	t.Run("ErrWALOffsetRequiredWithWALSalt", func(t *testing.T) {
 		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALSalt1: 100}
 		if err := hdr.Validate(); err == nil || err.Error() != `wal offset required if salt exists` {
-			t.Fatalf("unexpected error: %s", err)
-		}
-	})
-	t.Run("ErrWALSizeRequiredWithWALSalt", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALSalt2: 100, WALOffset: 1000}
-		if err := hdr.Validate(); err == nil || err.Error() != `wal size required if salt exists` {
-			t.Fatalf("unexpected error: %s", err)
-		}
-	})
-	t.Run("ErrWALSizeRequiredWithWALOffset", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALOffset: 1000}
-		if err := hdr.Validate(); err == nil || err.Error() != `wal size required if wal offset exists` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
@@ -315,31 +303,37 @@ func TestTrailer_Validate(t *testing.T) {
 			PostApplyChecksum: ltx.ChecksumFlag | 1,
 			FileChecksum:      ltx.ChecksumFlag | 2,
 		}
-		if err := trailer.Validate(); err != nil {
+		if err := trailer.Validate(ltx.Header{}); err != nil {
 			t.Fatal(err)
+		}
+	})
+	t.Run("ErrPostApplyChecksumNotAllowed", func(t *testing.T) {
+		trailer := ltx.Trailer{PostApplyChecksum: 1}
+		if err := trailer.Validate(ltx.Header{Flags: ltx.HeaderFlagNoChecksum}); err == nil || err.Error() != `post-apply checksum not allowed` {
+			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrPostApplyChecksumRequired", func(t *testing.T) {
 		trailer := ltx.Trailer{}
-		if err := trailer.Validate(); err == nil || err.Error() != `post-apply checksum required` {
+		if err := trailer.Validate(ltx.Header{}); err == nil || err.Error() != `post-apply checksum required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrInvalidPostApplyChecksum", func(t *testing.T) {
 		trailer := ltx.Trailer{PostApplyChecksum: 1}
-		if err := trailer.Validate(); err == nil || err.Error() != `invalid post-apply checksum format` {
+		if err := trailer.Validate(ltx.Header{}); err == nil || err.Error() != `invalid post-apply checksum format` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrFileChecksumRequired", func(t *testing.T) {
 		trailer := ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag}
-		if err := trailer.Validate(); err == nil || err.Error() != `file checksum required` {
+		if err := trailer.Validate(ltx.Header{}); err == nil || err.Error() != `file checksum required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrInvalidFileChecksum", func(t *testing.T) {
 		trailer := ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag, FileChecksum: 1}
-		if err := trailer.Validate(); err == nil || err.Error() != `invalid file checksum format` {
+		if err := trailer.Validate(ltx.Header{}); err == nil || err.Error() != `invalid file checksum format` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
@@ -761,7 +755,7 @@ func writeFileSpec(tb testing.TB, w io.Writer, spec *ltx.FileSpec) int64 {
 }
 
 // readFileSpec is a helper function for reading a spec from a file.
-func readFileSpec(tb testing.TB, r io.Reader, size int64) *ltx.FileSpec {
+func readFileSpec(tb testing.TB, r io.Reader) *ltx.FileSpec {
 	tb.Helper()
 	var spec ltx.FileSpec
 	if _, err := spec.ReadFrom(r); err != nil {
@@ -789,7 +783,7 @@ func compactFileSpecs(tb testing.TB, inputs ...*ltx.FileSpec) (*ltx.FileSpec, er
 	if err := c.Compact(context.Background()); err != nil {
 		return nil, err
 	}
-	return readFileSpec(tb, &output, int64(output.Len())), nil
+	return readFileSpec(tb, &output), nil
 }
 
 // assertFileSpecEqual checks x & y for equality. Fail on inequality.

@@ -30,7 +30,6 @@ func NewDecoder(r io.Reader) *Decoder {
 		underlying: r,
 		r:          r,
 		state:      stateHeader,
-		chksum:     ChecksumFlag,
 		hash:       crc64.New(crc64.MakeTable(crc64.ISO)),
 	}
 }
@@ -76,13 +75,13 @@ func (dec *Decoder) Close() error {
 
 	dec.writeToHash(b[:TrailerChecksumOffset])
 
-	// Compare checksum with checksum in trailer.
+	// Compare file checksum with checksum in trailer.
 	if chksum := ChecksumFlag | Checksum(dec.hash.Sum64()); chksum != dec.trailer.FileChecksum {
 		return ErrChecksumMismatch
 	}
 
-	// Verify post-apply checksum for snapshot files.
-	if dec.header.IsSnapshot() {
+	// Verify post-apply checksum for snapshot files if checksums are being tracked.
+	if dec.header.IsSnapshot() && !dec.header.NoChecksum() {
 		if dec.trailer.PostApplyChecksum != dec.chksum {
 			return fmt.Errorf("post-apply checksum in trailer (%s) does not match calculated checksum (%s)", dec.trailer.PostApplyChecksum, dec.chksum)
 		}
@@ -114,6 +113,11 @@ func (dec *Decoder) DecodeHeader() error {
 	// Use LZ4 reader if compression is enabled.
 	if dec.header.Flags&HeaderFlagCompressLZ4 != 0 {
 		dec.r = lz4.NewReader(dec.underlying)
+	}
+
+	// Initialize checksum if checksum tracking is enabled.
+	if !dec.header.NoChecksum() {
+		dec.chksum = ChecksumFlag
 	}
 
 	return nil
@@ -167,8 +171,8 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 	dec.writeToHash(data)
 	dec.pageN++
 
-	// Calculate checksum while decoding snapshots.
-	if dec.header.IsSnapshot() {
+	// Calculate checksum while decoding snapshots if tracking checksums.
+	if dec.header.IsSnapshot() && !dec.header.NoChecksum() {
 		if hdr.Pgno != LockPgno(dec.header.PageSize) {
 			dec.chksum = ChecksumFlag | (dec.chksum ^ ChecksumPage(hdr.Pgno, data))
 		}
