@@ -600,3 +600,12 @@ func (a FileInfoSlice) Less(i, j int) bool {
 	}
 	return a[i].MinTXID < a[j].MinTXID
 }
+
+// MaxTXID returns the MaxTXID of the last element in the slice.
+// Returns zero if the slice is empty.
+func (a FileInfoSlice) MaxTXID() TXID {
+	if len(a) == 0 {
+		return 0
+	}
+	return a[len(a)-1].MaxTXID
+}
