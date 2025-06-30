@@ -25,18 +25,29 @@ that it represents. A timestamp provides users with a rough approximation of
 the time the transaction occurred and the checksum provides a basic integrity
 check.
 
-| Offset | Size | Description                             |
-| -------| ---- | --------------------------------------- |
-| 0      | 4    | Magic number. Always "LTX1".            |
-| 4      | 4    | Flags. Reserved. Always 0.              |
-| 8      | 4    | Page size, in bytes.                    |
-| 12     | 4    | Size of DB after transaction, in pages. |
-| 16     | 4    | Database ID.                            |
-| 20     | 8    | Minimum transaction ID.                 |
-| 28     | 8    | Maximum transaction ID.                 |
-| 36     | 8    | Timestamp (Milliseconds since epoch)    |
-| 44     | 8    | Pre-apply DB checksum (CRC-ISO-64)      |
-| 52     | 48   | Reserved.                               |
+| Offset | Size | Description                                     |
+| -------| ---- | ----------------------------------------------- |
+| 0      | 4    | Magic number. Always "LTX1".                    |
+| 4      | 4    | Flags. See below.                               |
+| 8      | 4    | Page size, in bytes.                            |
+| 12     | 4    | Size of DB after transaction, in pages.         |
+| 16     | 8    | Minimum transaction ID.                         |
+| 24     | 8    | Maximum transaction ID.                         |
+| 32     | 8    | Timestamp (Milliseconds since epoch)            |
+| 40     | 8    | Pre-apply DB checksum (CRC-ISO-64)              |
+| 48     | 8    | File offset in WAL, zero if journal             |
+| 56     | 8    | Size of WAL segment, zero if journal            |
+| 64     | 4    | Salt-1 from WAL, zero if journal or compacted   |
+| 68     | 4    | Salt-2 from WAL, zero if journal or compacted   |
+| 72     | 8    | ID of the node that created file, zero if unset |
+| 80     | 20   | Reserved.                                       |
+
+
+##### Header flags
+
+| Flag       | Description                 |
+| ---------- | --------------------------- |
+| 0x00000001 | Data is compressed with LZ4 |
 
 
 #### Page block
