@@ -609,3 +609,9 @@ func (a FileInfoSlice) MaxTXID() TXID {
 	}
 	return a[len(a)-1].MaxTXID
 }
+
+// IsContiguous returns true if the transaction range is contiguous with the previous range.
+// This is used to validate that the transaction ranges are contiguous when rebuilding snapshots.
+func IsContiguous(prevMaxTXID, minTXID, maxTXID TXID) bool {
+	return minTXID <= prevMaxTXID+1 && maxTXID > prevMaxTXID
+}
