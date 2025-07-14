@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sort"
 )
 
 // Compactor represents a compactor of LTX files.
@@ -53,11 +52,6 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 		}
 	}
 
-	// Sort inputs by transaction ID.
-	sort.Slice(c.inputs, func(i, j int) bool {
-		return c.inputs[i].dec.Header().MinTXID < c.inputs[j].dec.Header().MaxTXID
-	})
-
 	// Validate that reader page sizes match & TXIDs are contiguous.
 	for i := 1; i < len(c.inputs); i++ {
 		prevHdr := c.inputs[i-1].dec.Header()
@@ -66,7 +60,7 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 		if prevHdr.PageSize != hdr.PageSize {
 			return fmt.Errorf("input files have mismatched page sizes: %d != %d", prevHdr.PageSize, hdr.PageSize)
 		}
-		if !c.AllowNonContiguousTXIDs && prevHdr.MaxTXID+1 != hdr.MinTXID {
+		if !c.AllowNonContiguousTXIDs && !IsContiguous(prevHdr.MaxTXID, hdr.MinTXID, hdr.MaxTXID) {
 			return fmt.Errorf("non-contiguous transaction ids in input files: (%s,%s) -> (%s,%s)",
 				prevHdr.MinTXID.String(), prevHdr.MaxTXID.String(),
 				hdr.MinTXID.String(), hdr.MaxTXID.String(),

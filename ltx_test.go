@@ -670,6 +670,15 @@ func TestParseTimestamp(t *testing.T) {
 	}
 }
 
+func TestIsContiguous(t *testing.T) {
+	if !ltx.IsContiguous(0, 1, 10) {
+		t.Fatal("expected contiguous")
+	}
+	if !ltx.IsContiguous(11, 11, 12) {
+		t.Fatal("expected contiguous")
+	}
+}
+
 func BenchmarkChecksumPage(b *testing.B) {
 	for _, pageSize := range []int{512, 1024, 2048, 4096, 8192, 16384, 32768, 65536} {
 		b.Run(fmt.Sprint(pageSize), func(b *testing.B) {
