@@ -530,7 +530,10 @@ func NewFileInfoSliceIterator(a []*FileInfo) *FileInfoSliceIterator {
 		if v := cmp.Compare(x.Level, y.Level); v != 0 {
 			return v
 		}
-		return cmp.Compare(x.MinTXID, y.MinTXID)
+		if v := cmp.Compare(x.MinTXID, y.MinTXID); v != 0 {
+			return v
+		}
+		return cmp.Compare(x.MaxTXID, y.MaxTXID)
 	})
 
 	return &FileInfoSliceIterator{a: a}
