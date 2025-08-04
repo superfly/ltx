@@ -15,7 +15,10 @@ type FileSpec struct {
 
 // Write encodes a file spec to a file.
 func (s *FileSpec) WriteTo(dst io.Writer) (n int64, err error) {
-	enc := NewEncoder(dst)
+	enc, err := NewEncoder(dst)
+	if err != nil {
+		return 0, fmt.Errorf("create ltx encoder: %w", err)
+	}
 	if err := enc.EncodeHeader(s.Header); err != nil {
 		return 0, fmt.Errorf("encode header: %s", err)
 	}

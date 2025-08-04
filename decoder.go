@@ -1,6 +1,8 @@
 package ltx
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"hash"
 	"hash/crc64"
@@ -11,12 +13,13 @@ import (
 
 // Decoder represents a decoder of an LTX file.
 type Decoder struct {
-	underlying io.Reader // main reader
-	r          io.Reader // current reader (either main or lz4)
+	r  io.Reader   // main reader
+	zr *lz4.Reader // lz4 reader
 
-	header  Header
-	trailer Trailer
-	state   string
+	header    Header
+	trailer   Trailer
+	pageIndex map[uint32]PageIndexElem
+	state     string
 
 	chksum Checksum
 	hash   hash.Hash64
@@ -27,10 +30,10 @@ type Decoder struct {
 // NewDecoder returns a new instance of Decoder.
 func NewDecoder(r io.Reader) *Decoder {
 	return &Decoder{
-		underlying: r,
-		r:          r,
-		state:      stateHeader,
-		hash:       crc64.New(crc64.MakeTable(crc64.ISO)),
+		r:     r,
+		zr:    lz4.NewReader(r),
+		state: stateHeader,
+		hash:  crc64.New(crc64.MakeTable(crc64.ISO)),
 	}
 }
 
@@ -55,6 +58,12 @@ func (dec *Decoder) PostApplyPos() Pos {
 	}
 }
 
+// PageIndex returns a mapping of page numbers to byte offsets and sizes of those pages.
+// This returns the raw reference and not a copy.
+func (dec *Decoder) PageIndex() map[uint32]PageIndexElem {
+	return dec.pageIndex
+}
+
 // Close verifies the reader is at the end of the file and that the checksum matches.
 func (dec *Decoder) Close() error {
 	if dec.state == stateClosed {
@@ -63,9 +72,21 @@ func (dec *Decoder) Close() error {
 		return fmt.Errorf("cannot close, expected %s", dec.state)
 	}
 
+	// Slurp the remaining data in to memory so we can use the ByteReader interface.
+	remainingBytes, err := io.ReadAll(dec.r)
+	if err != nil {
+		return fmt.Errorf("read all: %w", err)
+	}
+	remaining := bytes.NewReader(remainingBytes)
+
+	// Read page index.
+	if err := dec.decodePageIndex(remaining); err != nil {
+		return fmt.Errorf("read page index: %w", err)
+	}
+
 	// Read trailer.
 	b := make([]byte, TrailerSize)
-	if _, err := io.ReadFull(dec.r, b); err != nil {
+	if _, err := io.ReadFull(remaining, b); err != nil {
 		return err
 	} else if err := dec.trailer.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("unmarshal trailer: %w", err)
@@ -93,6 +114,36 @@ func (dec *Decoder) Close() error {
 	return nil
 }
 
+func (dec *Decoder) decodePageIndex(r io.ByteReader) error {
+	pageIndex := make(map[uint32]PageIndexElem)
+
+	for {
+		pgno, err := binary.ReadUvarint(r)
+		if err != nil {
+			return fmt.Errorf("read page index pgno: %w", err)
+		} else if pgno == 0 {
+			break // End when we hit the end marker.
+		}
+
+		offset, err := binary.ReadUvarint(r)
+		if err != nil {
+			return fmt.Errorf("read page index offset: %w", err)
+		}
+		size, err := binary.ReadUvarint(r)
+		if err != nil {
+			return fmt.Errorf("read page index size: %w", err)
+		}
+
+		pageIndex[uint32(pgno)] = PageIndexElem{
+			Offset: int64(offset),
+			Size:   int64(size),
+		}
+	}
+
+	dec.pageIndex = pageIndex
+	return nil
+}
+
 // DecodeHeader reads the LTX file header frame and stores it internally.
 // Call Header() to retrieve the header after this is successfully called.
 func (dec *Decoder) DecodeHeader() error {
@@ -108,11 +159,6 @@ func (dec *Decoder) DecodeHeader() error {
 
 	if err := dec.header.Validate(); err != nil {
 		return err
-	}
-
-	// Use LZ4 reader if compression is enabled.
-	if dec.header.Flags&HeaderFlagCompressLZ4 != 0 {
-		dec.r = lz4.NewReader(dec.underlying)
 	}
 
 	// Initialize checksum if checksum tracking is enabled.
@@ -147,15 +193,6 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 
 	// An empty page header indicates the end of the page block.
 	if hdr.IsZero() {
-		// Revert back to regular reader if we were using a compressed reader.
-		// We need to read off the LZ4 trailer frame to ensure we hit EOF.
-		if zr, ok := dec.r.(*lz4.Reader); ok {
-			if _, err := io.ReadFull(zr, make([]byte, 1)); err != io.EOF {
-				return fmt.Errorf("expected lz4 end frame")
-			}
-			dec.r = dec.underlying
-		}
-
 		dec.state = stateClose
 		return io.EOF
 	}
@@ -165,11 +202,17 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 	}
 
 	// Read page data next.
-	if _, err := io.ReadFull(dec.r, data); err != nil {
+	dec.zr.Reset(dec.r)
+	if _, err := io.ReadFull(dec.zr, data); err != nil {
 		return err
 	}
 	dec.writeToHash(data)
 	dec.pageN++
+
+	// Read off the LZ4 trailer frame to ensure we hit EOF.
+	if err := dec.readLZ4Trailer(); err != nil {
+		return fmt.Errorf("read lz4 trailer: %w", err)
+	}
 
 	// Calculate checksum while decoding snapshots if tracking checksums.
 	if dec.header.IsSnapshot() && !dec.header.NoChecksum() {
@@ -258,6 +301,14 @@ func (dec *Decoder) writeToHash(b []byte) {
 	dec.n += int64(len(b))
 }
 
+// readLZ4Trailer reads the LZ4 trailer frame to ensure we hit EOF.
+func (dec *Decoder) readLZ4Trailer() error {
+	if _, err := io.ReadFull(dec.zr, make([]byte, 1)); err != io.EOF {
+		return fmt.Errorf("expected lz4 end frame")
+	}
+	return nil
+}
+
 // DecodeHeader decodes the header from r. Returns the header & read bytes.
 func DecodeHeader(r io.Reader) (hdr Header, data []byte, err error) {
 	data = make([]byte, HeaderSize)
@@ -268,4 +319,18 @@ func DecodeHeader(r io.Reader) (hdr Header, data []byte, err error) {
 		return hdr, data[:n], err
 	}
 	return hdr, data, nil
+}
+
+// DecodePageData decodes the page header & data from a single frame.
+func DecodePageData(b []byte) (hdr PageHeader, data []byte, err error) {
+	if err := hdr.UnmarshalBinary(b); err != nil {
+		return hdr, data, fmt.Errorf("unmarshal: %w", err)
+	}
+	if hdr.IsZero() {
+		return hdr, data, nil
+	}
+
+	zr := lz4.NewReader(bytes.NewReader(b[PageHeaderSize:]))
+	data, err = io.ReadAll(zr)
+	return hdr, data, err
 }

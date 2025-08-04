@@ -21,16 +21,18 @@ type Compactor struct {
 }
 
 // NewCompactor returns a new instance of Compactor with default settings.
-func NewCompactor(w io.Writer, rdrs []io.Reader) *Compactor {
-	c := &Compactor{
-		enc: NewEncoder(w),
+func NewCompactor(w io.Writer, rdrs []io.Reader) (*Compactor, error) {
+	enc, err := NewEncoder(w)
+	if err != nil {
+		return nil, fmt.Errorf("create ltx encoder: %w", err)
 	}
 
+	c := &Compactor{enc: enc}
 	c.inputs = make([]*compactorInput, len(rdrs))
 	for i := range c.inputs {
 		c.inputs[i] = &compactorInput{dec: NewDecoder(rdrs[i])}
 	}
-	return c
+	return c, nil
 }
 
 // Header returns the LTX header of the compacted file. Only valid after successful Compact().

@@ -20,7 +20,7 @@ const (
 	Magic = "LTX1"
 
 	// Version is the current version of the LTX file format.
-	Version = 1
+	Version = 2
 )
 
 // Size constants.
@@ -170,10 +170,9 @@ func (t *TXID) UnmarshalJSON(data []byte) (err error) {
 
 // Header flags.
 const (
-	HeaderFlagMask = uint32(HeaderFlagCompressLZ4 | HeaderFlagNoChecksum)
+	HeaderFlagMask = uint32(HeaderFlagNoChecksum)
 
-	HeaderFlagCompressLZ4 = uint32(1 << 0)
-	HeaderFlagNoChecksum  = uint32(1 << 1)
+	HeaderFlagNoChecksum = uint32(1 << 1)
 )
 
 // Header represents the header frame of an LTX file.

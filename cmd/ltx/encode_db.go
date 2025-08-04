@@ -30,7 +30,6 @@ func NewEncodeDBCommand() *EncodeDBCommand {
 func (c *EncodeDBCommand) Run(ctx context.Context, args []string) (ret error) {
 	fs := flag.NewFlagSet("ltx-encode-db", flag.ContinueOnError)
 	outPath := fs.String("o", "", "output path")
-	compressed := fs.Bool("c", false, "compress database pages")
 	fs.Usage = func() {
 		fmt.Println(`
 The encode-db command encodes an SQLite database into an LTX file.
@@ -73,11 +72,10 @@ Arguments:
 
 	var flags uint32
 	var postApplyChecksum ltx.Checksum
-	if *compressed {
-		flags |= ltx.HeaderFlagCompressLZ4
+	enc, err := ltx.NewEncoder(out)
+	if err != nil {
+		return fmt.Errorf("create ltx encoder: %w", err)
 	}
-
-	enc := ltx.NewEncoder(out)
 	if err := enc.EncodeHeader(ltx.Header{
 		Version:   1,
 		Flags:     flags,
