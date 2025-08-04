@@ -135,6 +135,8 @@ func (enc *Encoder) Close() error {
 }
 
 func (enc *Encoder) encodePageIndex() error {
+	offset := enc.n
+
 	// Write elements in sorted page number order.
 	pgnos := make([]uint32, 0, len(enc.index))
 	for pgno := range enc.index {
@@ -162,6 +164,12 @@ func (enc *Encoder) encodePageIndex() error {
 	if _, err := enc.w.Write(buf[:binary.PutUvarint(buf, 0)]); err != nil {
 		return fmt.Errorf("write page index pgno: %w", err)
 	}
+
+	// Write size of page index.
+	if err := binary.Write(enc.w, binary.BigEndian, uint64(enc.n-offset)); err != nil {
+		return fmt.Errorf("write page index size: %w", err)
+	}
+
 	return nil
 }
 
