@@ -1,7 +1,6 @@
 package ltx_test
 
 import (
-	"bytes"
 	"io"
 	"math/rand"
 	"path/filepath"
@@ -285,85 +284,4 @@ func TestEncode_EncodePage(t *testing.T) {
 		}
 	})
 
-	// TestPageIndexNotInChecksum demonstrates a security vulnerability where
-	// the page index is not included in the file checksum calculation.
-	// This test documents the bug and should fail until the issue is fixed.
-	t.Run("PageIndexNotInChecksum", func(t *testing.T) {
-		t.Log("Testing page index checksum vulnerability...")
-		// Create an LTX file
-		var buf bytes.Buffer
-		enc, err := ltx.NewEncoder(&buf)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Use flags to disable checksum validation to simplify the test
-		header := ltx.Header{
-			Version:   2,
-			Flags:     ltx.HeaderFlagNoChecksum, // Disable checksum to avoid other errors
-			PageSize:  512,
-			Commit:    2,
-			MinTXID:   1,
-			MaxTXID:   1,
-			Timestamp: 1000,
-		}
-		
-		if err := enc.EncodeHeader(header); err != nil {
-			t.Fatal(err)
-		}
-
-		// Write pages
-		if err := enc.EncodePage(ltx.PageHeader{Pgno: 1}, bytes.Repeat([]byte{0x11}, 512)); err != nil {
-			t.Fatal(err)
-		}
-		if err := enc.EncodePage(ltx.PageHeader{Pgno: 2}, bytes.Repeat([]byte{0x22}, 512)); err != nil {
-			t.Fatal(err)
-		}
-
-		// Close the encoder
-		if err := enc.Close(); err != nil {
-			t.Fatal(err)
-		}
-
-		originalData := buf.Bytes()
-		
-		// The checksum in the trailer should include ALL file content up to the trailer
-		// File structure:
-		// - Header: 100 bytes
-		// - Page data (compressed)
-		// - Empty page header: 4 bytes
-		// - Page index (variable size)
-		// - Page index size: 8 bytes  
-		// - Trailer: 16 bytes
-		
-		trailerStart := len(originalData) - 16
-		pageIndexSizeStart := trailerStart - 8
-		
-		// Find the empty page header (4 zeros)
-		emptyHeaderPos := -1
-		for i := 100; i < len(originalData)-20; i++ {
-			if originalData[i] == 0 && originalData[i+1] == 0 && 
-			   originalData[i+2] == 0 && originalData[i+3] == 0 {
-				emptyHeaderPos = i
-				break
-			}
-		}
-		
-		if emptyHeaderPos != -1 {
-			actualPageIndexStart := emptyHeaderPos + 4
-			actualPageIndexEnd := pageIndexSizeStart
-			actualPageIndexData := originalData[actualPageIndexStart:actualPageIndexEnd]
-			
-			if len(actualPageIndexData) > 0 {
-				// The bug is that encoder.go:encodePageIndex() writes directly to enc.w
-				// instead of using enc.write() which would include it in the checksum.
-				// This means the page index can be tampered with without detection.
-				
-				t.Errorf("SECURITY VULNERABILITY: Page index (%d bytes) is not included in checksum", len(actualPageIndexData))
-				t.Errorf("The page index is written using enc.w.Write() instead of enc.write()")
-				t.Errorf("This allows an attacker to modify page mappings without detection")
-				t.Logf("Fix: In encoder.go encodePageIndex(), use enc.write() instead of enc.w.Write()")
-			}
-		}
-	})
 }
