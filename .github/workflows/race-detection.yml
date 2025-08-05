@@ -1,0 +1,32 @@
+name: Race Detection
+
+on:
+  push:
+    branches: [ main, page-index, page-index-fixes ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  race:
+    name: Race Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Get dependencies
+        run: go mod download
+
+      - name: Run tests with race detector
+        run: go test -race -v ./...
+        env:
+          GORACE: "halt_on_error=1"
+
+      - name: Run benchmarks with race detector
+        run: go test -race -run=^$ -bench=. -benchtime=10x ./...
+        env:
+          GORACE: "halt_on_error=1"

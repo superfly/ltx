@@ -1,3 +1,4 @@
+// Package main implements the ltx command-line tool for working with LTX files.
 package main
 
 import (
@@ -19,7 +20,7 @@ func NewApplyCommand() *ApplyCommand {
 }
 
 // Run executes the command.
-func (c *ApplyCommand) Run(ctx context.Context, args []string) (ret error) {
+func (c *ApplyCommand) Run(_ context.Context, args []string) (ret error) {
 	fs := flag.NewFlagSet("ltx-apply", flag.ContinueOnError)
 	dbPath := fs.String("db", "", "database path")
 	fs.Usage = func() {
@@ -66,7 +67,7 @@ Arguments:
 	return dbFile.Close()
 }
 
-func (c *ApplyCommand) applyLTXFile(_ context.Context, dbFile *os.File, filename string) error {
+func (*ApplyCommand) applyLTXFile(_ context.Context, dbFile *os.File, filename string) error {
 	ltxFile, err := os.Open(filename)
 	if err != nil {
 		return err

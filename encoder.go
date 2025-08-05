@@ -308,6 +308,7 @@ func (enc *Encoder) writeToHash(b []byte) {
 	enc.n += int64(len(b))
 }
 
+// PageIndexElem represents an element in the page index.
 type PageIndexElem struct {
 	Offset int64
 	Size   int64

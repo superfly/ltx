@@ -50,7 +50,7 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 	// Read headers from all inputs.
 	for _, input := range c.inputs {
 		if err := input.dec.DecodeHeader(); err != nil {
-			return
+			return err
 		}
 	}
 

@@ -56,7 +56,7 @@ Usage:
 	return nil
 }
 
-func (c *VerifyCommand) verifyFile(_ context.Context, filename string) error {
+func (*VerifyCommand) verifyFile(_ context.Context, filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return err

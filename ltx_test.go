@@ -374,11 +374,11 @@ func TestIsValidPageSize(t *testing.T) {
 
 func TestParseFilename(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
-		if min, max, err := ltx.ParseFilename("0000000000000001-00000000000003e8.ltx"); err != nil {
+		if minTXID, maxTXID, err := ltx.ParseFilename("0000000000000001-00000000000003e8.ltx"); err != nil {
 			t.Fatal(err)
-		} else if got, want := min, ltx.TXID(1); got != want {
+		} else if got, want := minTXID, ltx.TXID(1); got != want {
 			t.Fatalf("min=%d, want %d", got, want)
-		} else if got, want := max, ltx.TXID(1000); got != want {
+		} else if got, want := maxTXID, ltx.TXID(1000); got != want {
 			t.Fatalf("max=%d, want %d", got, want)
 		}
 	})

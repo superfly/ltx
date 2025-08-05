@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	SQLITE_DATABASE_HEADER_STRING = "SQLite format 3\x00"
-	SQLITE_DATABASE_HEADER_SIZE   = 100
+	sqliteDatabaseHeaderString = "SQLite format 3\x00"
+	sqliteDatabaseHeaderSize   = 100
 )
 
 // EncodeDBCommand represents a command to encode an SQLite database file as a single LTX file.
@@ -27,7 +27,7 @@ func NewEncodeDBCommand() *EncodeDBCommand {
 }
 
 // Run executes the command.
-func (c *EncodeDBCommand) Run(ctx context.Context, args []string) (ret error) {
+func (c *EncodeDBCommand) Run(_ context.Context, args []string) (ret error) {
 	fs := flag.NewFlagSet("ltx-encode-db", flag.ContinueOnError)
 	outPath := fs.String("o", "", "output path")
 	fs.Usage = func() {
@@ -122,15 +122,15 @@ type sqliteDatabaseHeader struct {
 	pageN    uint32
 }
 
-func (c *EncodeDBCommand) readSQLiteDatabaseHeader(rd io.Reader) (ord io.Reader, hdr sqliteDatabaseHeader, err error) {
-	b := make([]byte, SQLITE_DATABASE_HEADER_SIZE)
+func (*EncodeDBCommand) readSQLiteDatabaseHeader(rd io.Reader) (ord io.Reader, hdr sqliteDatabaseHeader, err error) {
+	b := make([]byte, sqliteDatabaseHeaderSize)
 	if _, err := io.ReadFull(rd, b); err == io.ErrUnexpectedEOF {
 		return ord, hdr, fmt.Errorf("invalid database header")
 	} else if err == io.EOF {
 		return ord, hdr, fmt.Errorf("empty database")
 	} else if err != nil {
 		return ord, hdr, err
-	} else if !bytes.Equal(b[:len(SQLITE_DATABASE_HEADER_STRING)], []byte(SQLITE_DATABASE_HEADER_STRING)) {
+	} else if !bytes.Equal(b[:len(sqliteDatabaseHeaderString)], []byte(sqliteDatabaseHeaderString)) {
 		return ord, hdr, fmt.Errorf("invalid database header")
 	}
 

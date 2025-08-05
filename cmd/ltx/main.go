@@ -72,7 +72,7 @@ func (m *Main) Run(ctx context.Context, args []string) (err error) {
 }
 
 // Usage prints the help screen to STDOUT.
-func (m *Main) Usage() {
+func (*Main) Usage() {
 	fmt.Println(`
 ltx is a command-line tool for inspecting LTX files.
 
