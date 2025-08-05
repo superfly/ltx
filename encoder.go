@@ -149,26 +149,24 @@ func (enc *Encoder) encodePageIndex() error {
 	for _, pgno := range pgnos {
 		elem := enc.index[pgno]
 
-		if _, err := enc.write(buf[:binary.PutUvarint(buf, uint64(pgno))]); err != nil {
+		if _, err := enc.w.Write(buf[:binary.PutUvarint(buf, uint64(pgno))]); err != nil {
 			return fmt.Errorf("write page index pgno: %w", err)
 		}
-		if _, err := enc.write(buf[:binary.PutUvarint(buf, uint64(elem.Offset))]); err != nil {
+		if _, err := enc.w.Write(buf[:binary.PutUvarint(buf, uint64(elem.Offset))]); err != nil {
 			return fmt.Errorf("write page index offset: %w", err)
 		}
-		if _, err := enc.write(buf[:binary.PutUvarint(buf, uint64(elem.Size))]); err != nil {
+		if _, err := enc.w.Write(buf[:binary.PutUvarint(buf, uint64(elem.Size))]); err != nil {
 			return fmt.Errorf("write page index size: %w", err)
 		}
 	}
 
 	// Write end marker.
-	if _, err := enc.write(buf[:binary.PutUvarint(buf, 0)]); err != nil {
+	if _, err := enc.w.Write(buf[:binary.PutUvarint(buf, 0)]); err != nil {
 		return fmt.Errorf("write page index pgno: %w", err)
 	}
 
 	// Write size of page index.
-	sizeBuf := make([]byte, 8)
-	binary.BigEndian.PutUint64(sizeBuf, uint64(enc.n-offset))
-	if _, err := enc.write(sizeBuf); err != nil {
+	if err := binary.Write(enc.w, binary.BigEndian, uint64(enc.n-offset)); err != nil {
 		return fmt.Errorf("write page index size: %w", err)
 	}
 
