@@ -26,22 +26,29 @@ that it represents. A timestamp provides users with a rough approximation of
 the time the transaction occurred and the checksum provides a basic integrity
 check.
 
-| Offset | Size | Description                             |
-| -------| ---- | --------------------------------------- |
-| 0      | 4    | Magic number. Always "LTX1".            |
-| 4      | 4    | Flags. Reserved for future use.         |
-| 8      | 4    | Page size, in bytes.                    |
-| 12     | 4    | Size of DB after transaction, in pages. |
-| 16     | 8    | Minimum transaction ID.                 |
-| 24     | 8    | Maximum transaction ID.                 |
-| 32     | 8    | Timestamp (Milliseconds since epoch)    |
-| 40     | 8    | Pre-apply DB checksum (CRC-ISO-64)      |
-| 48     | 8    | WAL file offset from original WAL       |
-| 56     | 8    | Size of original WAL segment            |
-| 64     | 4    | Header salt-1 from original WAL         |
-| 68     | 4    | Header salt-2 from original WAL         |
-| 72     | 8    | Node ID where LTX file was created      |
-| 80     | 20   | Reserved.                               |
+| Offset | Size | Description                                     |
+| -------| ---- | ----------------------------------------------- |
+| 0      | 4    | Magic number. Always "LTX1".                    |
+| 4      | 4    | Flags. See below.                               |
+| 8      | 4    | Page size, in bytes.                            |
+| 12     | 4    | Size of DB after transaction, in pages.         |
+| 16     | 8    | Minimum transaction ID.                         |
+| 24     | 8    | Maximum transaction ID.                         |
+| 32     | 8    | Timestamp (Milliseconds since epoch)            |
+| 40     | 8    | Pre-apply DB checksum (CRC-ISO-64)              |
+| 48     | 8    | File offset in WAL, zero if journal             |
+| 56     | 8    | Size of WAL segment, zero if journal            |
+| 64     | 4    | Salt-1 from WAL, zero if journal or compacted   |
+| 68     | 4    | Salt-2 from WAL, zero if journal or compacted   |
+| 72     | 8    | ID of the node that created file, zero if unset |
+| 80     | 20   | Reserved.                                       |
+
+Header flags
+------------
+
+| Flag       | Description                 |
+| ---------- | --------------------------- |
+| 0x00000001 | Data is compressed with LZ4 |
 
 Page block
 ----------
