@@ -20,7 +20,7 @@ func NewApplyCommand() *ApplyCommand {
 }
 
 // Run executes the command.
-func (c *ApplyCommand) Run(ctx context.Context, args []string) (ret error) {
+func (c *ApplyCommand) Run(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("ltx-apply", flag.ContinueOnError)
 	dbPath := fs.String("db", "", "database path")
 	fs.Usage = func() {

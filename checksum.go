@@ -154,7 +154,7 @@ func (c Checksum) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface for Checksum.
-func (c *Checksum) UnmarshalJSON(data []byte) (err error) {
+func (c *Checksum) UnmarshalJSON(data []byte) error {
 	var s *string
 	if err := json.Unmarshal(data, &s); err != nil {
 		return fmt.Errorf("cannot unmarshal checksum from JSON value")

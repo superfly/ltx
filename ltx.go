@@ -149,7 +149,7 @@ func (t TXID) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface for TXID.
-func (t *TXID) UnmarshalJSON(data []byte) (err error) {
+func (t *TXID) UnmarshalJSON(data []byte) error {
 	var s *string
 	if err := json.Unmarshal(data, &s); err != nil {
 		return fmt.Errorf("cannot unmarshal TXID from JSON value")

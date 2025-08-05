@@ -27,7 +27,7 @@ func NewEncodeDBCommand() *EncodeDBCommand {
 }
 
 // Run executes the command.
-func (c *EncodeDBCommand) Run(_ context.Context, args []string) (ret error) {
+func (c *EncodeDBCommand) Run(_ context.Context, args []string) error {
 	fs := flag.NewFlagSet("ltx-encode-db", flag.ContinueOnError)
 	outPath := fs.String("o", "", "output path")
 	fs.Usage = func() {

@@ -22,7 +22,7 @@ func NewListCommand() *ListCommand {
 }
 
 // Run executes the command.
-func (c *ListCommand) Run(_ context.Context, args []string) (ret error) {
+func (c *ListCommand) Run(_ context.Context, args []string) error {
 	fs := flag.NewFlagSet("ltx-list", flag.ContinueOnError)
 	tsv := fs.Bool("tsv", false, "output as tab-separated values")
 	fs.Usage = func() {

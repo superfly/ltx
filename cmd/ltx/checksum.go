@@ -20,7 +20,7 @@ func NewChecksumCommand() *ChecksumCommand {
 }
 
 // Run executes the command.
-func (*ChecksumCommand) Run(_ context.Context, args []string) (ret error) {
+func (*ChecksumCommand) Run(_ context.Context, args []string) error {
 	fs := flag.NewFlagSet("ltx-checksum", flag.ContinueOnError)
 	fs.Usage = func() {
 		fmt.Println(`

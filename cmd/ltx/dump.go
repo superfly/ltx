@@ -20,7 +20,7 @@ func NewDumpCommand() *DumpCommand {
 }
 
 // Run executes the command.
-func (*DumpCommand) Run(_ context.Context, args []string) (ret error) {
+func (*DumpCommand) Run(_ context.Context, args []string) error {
 	fs := flag.NewFlagSet("ltx-dump", flag.ContinueOnError)
 	fs.Usage = func() {
 		fmt.Println(`

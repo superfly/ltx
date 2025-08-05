@@ -33,7 +33,7 @@ func NewMain() *Main {
 }
 
 // Run executes the program.
-func (m *Main) Run(ctx context.Context, args []string) (err error) {
+func (m *Main) Run(ctx context.Context, args []string) error {
 	// Extract command name.
 	var cmd string
 	if len(args) > 0 {
