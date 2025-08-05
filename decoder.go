@@ -78,15 +78,15 @@ func (dec *Decoder) Close() error {
 	if err != nil {
 		return fmt.Errorf("read all: %w", err)
 	}
-	
+
 	// Write all remaining data except the last 8 bytes (file checksum) to hash
 	if len(remainingBytes) < TrailerSize {
 		return fmt.Errorf("insufficient data for trailer")
 	}
-	
+
 	// Add everything up to (but not including) the file checksum to the hash
 	dec.writeToHash(remainingBytes[:len(remainingBytes)-ChecksumSize])
-	
+
 	remaining := bytes.NewReader(remainingBytes)
 
 	// Read page index.
@@ -107,14 +107,14 @@ func (dec *Decoder) Close() error {
 		// For snapshots, we expect all pages from 1 to commit (excluding lock page)
 		expectedLastPage := dec.header.Commit
 		lockPgno := LockPgno(dec.header.PageSize)
-		
+
 		// If commit is past the lock page, the last page should be commit
 		// If commit is the lock page, the last page should be commit-1
 		// If commit is before the lock page, the last page should be commit
 		if dec.header.Commit == lockPgno {
 			expectedLastPage = dec.header.Commit - 1
 		}
-		
+
 		if dec.lastPgno != expectedLastPage {
 			return fmt.Errorf("snapshot incomplete: expected last page %d, got %d", expectedLastPage, dec.lastPgno)
 		}
