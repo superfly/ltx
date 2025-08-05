@@ -51,7 +51,7 @@ func TestParsePos(t *testing.T) {
 func TestHeader_Validate(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		hdr := ltx.Header{
-			Version:          1,
+			Version:          2,
 			PageSize:         1024,
 			Commit:           2,
 			MinTXID:          3,
@@ -68,7 +68,7 @@ func TestHeader_Validate(t *testing.T) {
 	})
 	t.Run("CommitZero", func(t *testing.T) {
 		hdr := ltx.Header{
-			Version:          1,
+			Version:          2,
 			PageSize:         1024,
 			Commit:           0,
 			MinTXID:          5,
@@ -86,73 +86,73 @@ func TestHeader_Validate(t *testing.T) {
 		}
 	})
 	t.Run("ErrFlags", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, Flags: 1 << 3}
+		hdr := ltx.Header{Version: 2, Flags: 1 << 3}
 		if err := hdr.Validate(); err == nil || err.Error() != `invalid flags: 0x00000008` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrInvalidPageSize", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1000}
+		hdr := ltx.Header{Version: 2, PageSize: 1000}
 		if err := hdr.Validate(); err == nil || err.Error() != `invalid page size: 1000` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrMinTXIDRequired", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2}
+		hdr := ltx.Header{Version: 2, PageSize: 1024, Commit: 2}
 		if err := hdr.Validate(); err == nil || err.Error() != `minimum transaction id required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrMaxTXIDRequired", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 3}
+		hdr := ltx.Header{Version: 2, PageSize: 1024, Commit: 2, MinTXID: 3}
 		if err := hdr.Validate(); err == nil || err.Error() != `maximum transaction id required` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrTXIDOutOfOrderRequired", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 3, MaxTXID: 2}
+		hdr := ltx.Header{Version: 2, PageSize: 1024, Commit: 2, MinTXID: 3, MaxTXID: 2}
 		if err := hdr.Validate(); err == nil || err.Error() != `transaction ids out of order: (3,2)` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrNegativeWALOffset", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALOffset: -1000}
+		hdr := ltx.Header{Version: 2, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALOffset: -1000}
 		if err := hdr.Validate(); err == nil || err.Error() != `wal offset cannot be negative: -1000` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrNegativeWALSize", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALOffset: 32, WALSize: -1000}
+		hdr := ltx.Header{Version: 2, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALOffset: 32, WALSize: -1000}
 		if err := hdr.Validate(); err == nil || err.Error() != `wal size cannot be negative: -1000` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrWALOffsetRequiredWithWALSalt", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALSalt1: 100}
+		hdr := ltx.Header{Version: 2, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALSalt1: 100}
 		if err := hdr.Validate(); err == nil || err.Error() != `wal offset required if salt exists` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrWALOffsetRequiredWithWALSize", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALSize: 1000}
+		hdr := ltx.Header{Version: 2, PageSize: 1024, Commit: 2, MinTXID: 1, MaxTXID: 1, WALSize: 1000}
 		if err := hdr.Validate(); err == nil || err.Error() != `wal offset required if wal size exists` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrSnapshotPreApplyChecksumNotAllowed", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 4, MinTXID: 1, MaxTXID: 3, PreApplyChecksum: 1}
+		hdr := ltx.Header{Version: 2, PageSize: 1024, Commit: 4, MinTXID: 1, MaxTXID: 3, PreApplyChecksum: 1}
 		if err := hdr.Validate(); err == nil || err.Error() != `pre-apply checksum must be zero on snapshots` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrNonSnapshotPreApplyChecksumRequired", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 4, MinTXID: 2, MaxTXID: 3}
+		hdr := ltx.Header{Version: 2, PageSize: 1024, Commit: 4, MinTXID: 2, MaxTXID: 3}
 		if err := hdr.Validate(); err == nil || err.Error() != `pre-apply checksum required on non-snapshot files` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
 	t.Run("ErrInvalidPreApplyChecksumFormat", func(t *testing.T) {
-		hdr := ltx.Header{Version: 1, PageSize: 1024, Commit: 4, MinTXID: 2, MaxTXID: 3, PreApplyChecksum: 1}
+		hdr := ltx.Header{Version: 2, PageSize: 1024, Commit: 4, MinTXID: 2, MaxTXID: 3, PreApplyChecksum: 1}
 		if err := hdr.Validate(); err == nil || err.Error() != `invalid pre-apply checksum format` {
 			t.Fatalf("unexpected error: %s", err)
 		}
@@ -788,7 +788,10 @@ func compactFileSpecs(tb testing.TB, inputs ...*ltx.FileSpec) (*ltx.FileSpec, er
 
 	// Compact files together.
 	var output bytes.Buffer
-	c := ltx.NewCompactor(&output, rdrs)
+	c, err := ltx.NewCompactor(&output, rdrs)
+	if err != nil {
+		return nil, err
+	}
 	if err := c.Compact(context.Background()); err != nil {
 		return nil, err
 	}

@@ -1,24 +1,29 @@
 package ltx
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"hash"
 	"hash/crc64"
 	"io"
+	"slices"
 
 	"github.com/pierrec/lz4/v4"
 )
 
-// Encoder implements a encoder for an LTX file.
+// Encoder implements an encoder for an LTX file.
 type Encoder struct {
-	underlying io.Writer // main writer
-	w          io.Writer // current writer (main or lz4 writer)
-	state      string
+	w     io.Writer   // main writer
+	zw    *lz4.Writer // compressed writer
+	state string
 
 	header  Header
 	trailer Trailer
+	buf     bytes.Buffer
 	hash    hash.Hash64
-	n       int64 // bytes written
+	index   map[uint32]PageIndexElem // page number to offset
+	n       int64                    // bytes written
 
 	// Track how many of each write has occurred to move state.
 	prevPgno     uint32
@@ -26,12 +31,25 @@ type Encoder struct {
 }
 
 // NewEncoder returns a new instance of Encoder.
-func NewEncoder(w io.Writer) *Encoder {
-	return &Encoder{
-		underlying: w,
-		w:          w,
-		state:      stateHeader,
+func NewEncoder(w io.Writer) (*Encoder, error) {
+	enc := &Encoder{
+		w:     w,
+		state: stateHeader,
+		index: make(map[uint32]PageIndexElem),
 	}
+
+	// The compressed writer writes to a buffer so we can calculate the size
+	// of the compressed data for the page index.
+	zw := lz4.NewWriter(&enc.buf)
+	if err := zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb)); err != nil { // minimize memory allocation
+		return nil, fmt.Errorf("cannot set lz4 block size: %w", err)
+	}
+	if err := zw.Apply(lz4.CompressionLevelOption(lz4.Fast)); err != nil {
+		return nil, fmt.Errorf("cannot set lz4 compression level: %w", err)
+	}
+	enc.zw = zw
+
+	return enc, nil
 }
 
 // N returns the number of bytes written.
@@ -74,15 +92,15 @@ func (enc *Encoder) Close() error {
 		return fmt.Errorf("write empty page header: %w", err)
 	}
 
-	// Close the compressed writer, if in use.
-	if zw, ok := enc.w.(*lz4.Writer); ok {
-		if err := zw.Close(); err != nil {
-			return fmt.Errorf("cannot close lz4 writer: %w", err)
-		}
+	// Close the compressed writer.
+	if err := enc.zw.Close(); err != nil {
+		return fmt.Errorf("cannot close lz4 writer: %w", err)
 	}
 
-	// Revert to original writer now that we've passed the compressed body.
-	enc.w = enc.underlying
+	// Write index to file.
+	if err := enc.encodePageIndex(); err != nil {
+		return fmt.Errorf("write page index: %w", err)
+	}
 
 	// Marshal trailer to bytes.
 	b1, err := enc.trailer.MarshalBinary()
@@ -116,6 +134,45 @@ func (enc *Encoder) Close() error {
 	return nil
 }
 
+func (enc *Encoder) encodePageIndex() error {
+	offset := enc.n
+
+	// Write elements in sorted page number order.
+	pgnos := make([]uint32, 0, len(enc.index))
+	for pgno := range enc.index {
+		pgnos = append(pgnos, pgno)
+	}
+	slices.Sort(pgnos)
+
+	// Write each element as a varint-encoded tuple.
+	buf := make([]byte, 0, 3*binary.MaxVarintLen64)
+	for _, pgno := range pgnos {
+		elem := enc.index[pgno]
+
+		buf = binary.AppendUvarint(buf[:0], uint64(pgno))
+		buf = binary.AppendUvarint(buf, uint64(elem.Offset))
+		buf = binary.AppendUvarint(buf, uint64(elem.Size))
+
+		if _, err := enc.write(buf); err != nil {
+			return fmt.Errorf("write page index element: %w", err)
+		}
+	}
+
+	// Write end marker.
+	buf = binary.AppendUvarint(buf[:0], uint64(0))
+	if _, err := enc.write(buf); err != nil {
+		return fmt.Errorf("write page index pgno: %w", err)
+	}
+
+	// Write size of page index.
+	buf = binary.BigEndian.AppendUint64(buf[:0], uint64(enc.n-offset))
+	if _, err := enc.write(buf); err != nil {
+		return fmt.Errorf("write page index size: %w", err)
+	}
+
+	return nil
+}
+
 // EncodeHeader writes hdr to the file's header block.
 func (enc *Encoder) EncodeHeader(hdr Header) error {
 	if enc.state == stateClosed {
@@ -137,18 +194,6 @@ func (enc *Encoder) EncodeHeader(hdr Header) error {
 		return fmt.Errorf("marshal header: %w", err)
 	} else if _, err := enc.write(b); err != nil {
 		return fmt.Errorf("write header: %w", err)
-	}
-
-	// Use a compressed writer for the body if LZ4 is enabled.
-	if enc.header.Flags&HeaderFlagCompressLZ4 != 0 {
-		zw := lz4.NewWriter(enc.underlying)
-		if err := zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb)); err != nil { // minimize memory allocation
-			return fmt.Errorf("cannot set lz4 block size: %w", err)
-		}
-		if err := zw.Apply(lz4.CompressionLevelOption(lz4.Fast)); err != nil {
-			return fmt.Errorf("cannot set lz4 compression level: %w", err)
-		}
-		enc.w = zw
 	}
 
 	// Move writer state to write page headers.
@@ -196,6 +241,8 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 		}
 	}
 
+	offset := enc.n
+
 	// Encode & write header.
 	b, err := hdr.MarshalBinary()
 	if err != nil {
@@ -205,23 +252,61 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 	}
 
 	// Write data to file.
-	if _, err = enc.write(data); err != nil {
+	if _, err = enc.writeCompressed(data); err != nil {
 		return fmt.Errorf("write page data: %w", err)
 	}
 
 	enc.pagesWritten++
 	enc.prevPgno = hdr.Pgno
+	enc.index[hdr.Pgno] = PageIndexElem{
+		Offset: offset,
+		Size:   enc.n - offset,
+	}
+
 	return nil
 }
 
-// write to the current writer & add to the checksum.
+// write to the uncompressed writer & add to the checksum.
 func (enc *Encoder) write(b []byte) (n int, err error) {
 	n, err = enc.w.Write(b)
 	enc.writeToHash(b[:n])
 	return n, err
 }
 
+// write to the compressed writer & add to the checksum.
+// Returns the size of the compressed data.
+func (enc *Encoder) writeCompressed(b []byte) (n int, err error) {
+	// Reset the buffer & compressed writer.
+	enc.buf.Reset()
+	enc.zw.Reset(&enc.buf)
+
+	// Write to the compressed writer to the buffer and then write the buffer to the uncompressed writer.
+	// This is necessary so we can calculate the size of the compressed data for the page index.
+	if _, err = enc.zw.Write(b); err != nil {
+		return n, err
+	}
+
+	// Close the compressed writer to flush any remaining data.
+	if err := enc.zw.Close(); err != nil {
+		return n, fmt.Errorf("cannot close lz4 writer: %w", err)
+	}
+
+	compressed := enc.buf.Bytes()
+	n, err = enc.w.Write(compressed)
+
+	// Write the uncompressed data to the hash, but add the compressed length to the size.
+	_, _ = enc.hash.Write(b)
+	enc.n += int64(len(compressed))
+
+	return n, err
+}
+
 func (enc *Encoder) writeToHash(b []byte) {
 	_, _ = enc.hash.Write(b)
 	enc.n += int64(len(b))
+}
+
+type PageIndexElem struct {
+	Offset int64
+	Size   int64
 }

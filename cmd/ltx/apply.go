@@ -66,7 +66,7 @@ Arguments:
 	return dbFile.Close()
 }
 
-func (c *ApplyCommand) applyLTXFile(ctx context.Context, dbFile *os.File, filename string) error {
+func (c *ApplyCommand) applyLTXFile(_ context.Context, dbFile *os.File, filename string) error {
 	ltxFile, err := os.Open(filename)
 	if err != nil {
 		return err
