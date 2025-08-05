@@ -42,7 +42,7 @@ func (c *Compactor) Header() Header { return c.enc.Header() }
 func (c *Compactor) Trailer() Trailer { return c.enc.Trailer() }
 
 // Compact merges the input readers into a single LTX writer.
-func (c *Compactor) Compact(ctx context.Context) (retErr error) {
+func (c *Compactor) Compact(ctx context.Context) error {
 	if len(c.inputs) == 0 {
 		return fmt.Errorf("at least one input reader required")
 	}
@@ -50,7 +50,7 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 	// Read headers from all inputs.
 	for _, input := range c.inputs {
 		if err := input.dec.DecodeHeader(); err != nil {
-			return
+			return err
 		}
 	}
 
