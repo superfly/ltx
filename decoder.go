@@ -79,6 +79,9 @@ func (dec *Decoder) Close() error {
 	}
 	remaining := bytes.NewReader(remainingBytes)
 
+	// Write everything but the file checksum to the hash.
+	dec.writeToHash(remainingBytes[:len(remainingBytes)-ChecksumSize])
+
 	// Read page index.
 	if err := dec.decodePageIndex(remaining); err != nil {
 		return fmt.Errorf("read page index: %w", err)
@@ -93,8 +96,6 @@ func (dec *Decoder) Close() error {
 	}
 
 	// TODO: Ensure last read page is equal to the commit for snapshot LTX files
-
-	dec.writeToHash(b[:TrailerChecksumOffset])
 
 	// Compare file checksum with checksum in trailer.
 	if chksum := ChecksumFlag | Checksum(dec.hash.Sum64()); chksum != dec.trailer.FileChecksum {

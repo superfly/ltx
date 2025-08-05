@@ -116,7 +116,7 @@ func TestCompactor_Compact(t *testing.T) {
 			},
 			Trailer: ltx.Trailer{
 				PostApplyChecksum: 0x8a249272ad9f7dea,
-				FileChecksum:      0xcaf341fe1e6cddfb,
+				FileChecksum:      0xae0ae2e4c2df6049,
 			},
 		})
 	})
@@ -198,7 +198,7 @@ func TestCompactor_Compact(t *testing.T) {
 			},
 			Trailer: ltx.Trailer{
 				PostApplyChecksum: ltx.ChecksumFlag | 9,
-				FileChecksum:      0xead633959f3c67a8,
+				FileChecksum:      0x8da4b823aca2e8d7,
 			},
 		})
 	})
@@ -239,7 +239,7 @@ func TestCompactor_Compact(t *testing.T) {
 			},
 			Trailer: ltx.Trailer{
 				PostApplyChecksum: ltx.ChecksumFlag | 5,
-				FileChecksum:      0xf688132c3904f118,
+				FileChecksum:      0xa6246dd737ab66ca,
 			},
 		})
 	})
