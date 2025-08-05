@@ -1,6 +1,7 @@
 package ltx_test
 
 import (
+	"bytes"
 	"io"
 	"math/rand"
 	"path/filepath"
@@ -284,4 +285,112 @@ func TestEncode_EncodePage(t *testing.T) {
 		}
 	})
 
+	// TestPageIndexInChecksum verifies that the page index is properly included
+	// in the file checksum calculation to prevent tampering.
+	// This test creates two identical files except one has the page index tampered
+	// and verifies that the tampered file is detected.
+	t.Run("PageIndexInChecksum", func(t *testing.T) {
+		// Test with checksums enabled to verify page index is included
+		var buf1 bytes.Buffer
+		enc1, err := ltx.NewEncoder(&buf1)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		header := ltx.Header{
+			Version:   2,
+			PageSize:  512,
+			Commit:    2,
+			MinTXID:   1,
+			MaxTXID:   2,
+			Timestamp: 1000,
+		}
+		
+		if err := enc1.EncodeHeader(header); err != nil {
+			t.Fatal(err)
+		}
+
+		// Write pages
+		if err := enc1.EncodePage(ltx.PageHeader{Pgno: 1}, bytes.Repeat([]byte{0x11}, 512)); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc1.EncodePage(ltx.PageHeader{Pgno: 2}, bytes.Repeat([]byte{0x22}, 512)); err != nil {
+			t.Fatal(err)
+		}
+
+		// Set post-apply checksum (required for snapshots)
+		enc1.SetPostApplyChecksum(ltx.ChecksumFlag | 0x1234)
+
+		// Close the encoder
+		if err := enc1.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		originalData := buf1.Bytes()
+		originalChecksum := enc1.Trailer().FileChecksum
+		
+		// Now tamper with the page index
+		tamperedData := make([]byte, len(originalData))
+		copy(tamperedData, originalData)
+		
+		// Find page index location
+		trailerStart := len(tamperedData) - 16
+		pageIndexSizeStart := trailerStart - 8
+		
+		// Find the empty page header (4 zeros)
+		emptyHeaderPos := -1
+		for i := 100; i < len(tamperedData)-20; i++ {
+			if tamperedData[i] == 0 && tamperedData[i+1] == 0 && 
+			   tamperedData[i+2] == 0 && tamperedData[i+3] == 0 {
+				emptyHeaderPos = i
+				break
+			}
+		}
+		
+		if emptyHeaderPos == -1 {
+			t.Fatal("Could not find empty page header")
+		}
+		
+		// Tamper with page index data
+		pageIndexStart := emptyHeaderPos + 4
+		if pageIndexStart < pageIndexSizeStart {
+			// Modify a byte in the page index
+			tamperedData[pageIndexStart] ^= 0xFF
+		}
+		
+		// Try to decode the tampered file
+		dec := ltx.NewDecoder(bytes.NewReader(tamperedData))
+		if err := dec.DecodeHeader(); err != nil {
+			t.Fatal(err)
+		}
+		
+		// Read all pages
+		pageData := make([]byte, 512)
+		pagesRead := 0
+		for {
+			var pageHeader ltx.PageHeader
+			if err := dec.DecodePage(&pageHeader, pageData); err != nil {
+				if err == io.EOF {
+					break
+				}
+				t.Fatalf("Error reading page: %v", err)
+			}
+			pagesRead++
+		}
+		
+		t.Logf("Read %d pages before Close", pagesRead)
+		
+		// Close should fail with checksum mismatch if page index is included
+		err = dec.Close()
+		if err == nil {
+			t.Fatal("Expected checksum mismatch error, but got none - page index is NOT in checksum!")
+		}
+		
+		if err != ltx.ErrChecksumMismatch {
+			t.Fatalf("Expected ErrChecksumMismatch, got: %v", err)
+		}
+		
+		t.Log("Success: Page index tampering was detected by checksum validation")
+		t.Logf("Original checksum: %x", originalChecksum)
+	})
 }
