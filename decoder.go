@@ -21,10 +21,11 @@ type Decoder struct {
 	pageIndex map[uint32]PageIndexElem
 	state     string
 
-	chksum Checksum
-	hash   hash.Hash64
-	pageN  int   // pages read
-	n      int64 // bytes read
+	chksum   Checksum
+	hash     hash.Hash64
+	pageN    int    // pages read
+	lastPgno uint32 // last page number read (for snapshot validation)
+	n        int64  // bytes read
 }
 
 // NewDecoder returns a new instance of Decoder.
@@ -101,7 +102,23 @@ func (dec *Decoder) Close() error {
 		return fmt.Errorf("unmarshal trailer: %w", err)
 	}
 
-	// TODO: Ensure last read page is equal to the commit for snapshot LTX files
+	// Ensure last read page is equal to the commit for snapshot LTX files
+	if dec.header.IsSnapshot() && dec.lastPgno != 0 {
+		// For snapshots, we expect all pages from 1 to commit (excluding lock page)
+		expectedLastPage := dec.header.Commit
+		lockPgno := LockPgno(dec.header.PageSize)
+		
+		// If commit is past the lock page, the last page should be commit
+		// If commit is the lock page, the last page should be commit-1
+		// If commit is before the lock page, the last page should be commit
+		if dec.header.Commit == lockPgno {
+			expectedLastPage = dec.header.Commit - 1
+		}
+		
+		if dec.lastPgno != expectedLastPage {
+			return fmt.Errorf("snapshot incomplete: expected last page %d, got %d", expectedLastPage, dec.lastPgno)
+		}
+	}
 
 	// Compare file checksum with checksum in trailer.
 	if chksum := ChecksumFlag | Checksum(dec.hash.Sum64()); chksum != dec.trailer.FileChecksum {
@@ -221,6 +238,7 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 	}
 	dec.writeToHash(data)
 	dec.pageN++
+	dec.lastPgno = hdr.Pgno
 
 	// Read off the LZ4 trailer frame to ensure we hit EOF.
 	if err := dec.readLZ4Trailer(); err != nil {
