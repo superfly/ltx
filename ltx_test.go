@@ -374,11 +374,11 @@ func TestIsValidPageSize(t *testing.T) {
 
 func TestParseFilename(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
-		if min, max, err := ltx.ParseFilename("0000000000000001-00000000000003e8.ltx"); err != nil {
+		if minTXID, maxTXID, err := ltx.ParseFilename("0000000000000001-00000000000003e8.ltx"); err != nil {
 			t.Fatal(err)
-		} else if got, want := min, ltx.TXID(1); got != want {
+		} else if got, want := minTXID, ltx.TXID(1); got != want {
 			t.Fatalf("min=%d, want %d", got, want)
-		} else if got, want := max, ltx.TXID(1000); got != want {
+		} else if got, want := maxTXID, ltx.TXID(1000); got != want {
 			t.Fatalf("max=%d, want %d", got, want)
 		}
 	})
@@ -688,8 +688,9 @@ func BenchmarkChecksumPage(b *testing.B) {
 }
 
 func benchmarkChecksumPage(b *testing.B, pageSize int) {
+	rng := rand.New(rand.NewSource(0))
 	data := make([]byte, pageSize)
-	_, _ = rand.Read(data)
+	_, _ = rng.Read(data)
 	b.ReportAllocs()
 	b.SetBytes(int64(pageSize))
 	b.ResetTimer()
@@ -708,8 +709,9 @@ func BenchmarkChecksumPageWithHasher(b *testing.B) {
 }
 
 func benchmarkChecksumPageWithHasher(b *testing.B, pageSize int) {
+	rng := rand.New(rand.NewSource(0))
 	data := make([]byte, pageSize)
-	_, _ = rand.Read(data)
+	_, _ = rng.Read(data)
 	b.ReportAllocs()
 	b.SetBytes(int64(pageSize))
 	b.ResetTimer()
@@ -725,10 +727,11 @@ func BenchmarkXOR(b *testing.B) {
 	const pageSize = 4096
 	const pageN = (1 << 30) / pageSize
 
+	rng := rand.New(rand.NewSource(0))
 	m := make(map[uint32]ltx.Checksum)
 	page := make([]byte, pageSize)
 	for pgno := uint32(1); pgno <= pageN; pgno++ {
-		_, _ = rand.Read(page)
+		_, _ = rng.Read(page)
 		m[pgno] = ltx.ChecksumPage(pgno, page)
 	}
 	b.SetBytes(int64(pageN * pageSize))

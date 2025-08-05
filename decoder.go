@@ -21,10 +21,10 @@ type Decoder struct {
 	pageIndex map[uint32]PageIndexElem
 	state     string
 
-	chksum Checksum
-	hash   hash.Hash64
-	pageN  int   // pages read
-	n      int64 // bytes read
+	chksum   Checksum
+	hash     hash.Hash64
+	pageN    int    // pages read
+	n        int64  // bytes read
 }
 
 // NewDecoder returns a new instance of Decoder.
@@ -77,11 +77,15 @@ func (dec *Decoder) Close() error {
 	if err != nil {
 		return fmt.Errorf("read all: %w", err)
 	}
-	remaining := bytes.NewReader(remainingBytes)
+	// Write all remaining data except the last 8 bytes (file checksum) to hash
+	if len(remainingBytes) < TrailerSize {
+		return fmt.Errorf("insufficient data for trailer")
+	}
 
-	// Write everything but the file checksum to the hash.
+	// Add everything up to (but not including) the file checksum to the hash
 	dec.writeToHash(remainingBytes[:len(remainingBytes)-ChecksumSize])
 
+	remaining := bytes.NewReader(remainingBytes)
 	// Read page index.
 	if err := dec.decodePageIndex(remaining); err != nil {
 		return fmt.Errorf("read page index: %w", err)
@@ -94,8 +98,6 @@ func (dec *Decoder) Close() error {
 	} else if err := dec.trailer.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("unmarshal trailer: %w", err)
 	}
-
-	// TODO: Ensure last read page is equal to the commit for snapshot LTX files
 
 	// Compare file checksum with checksum in trailer.
 	if chksum := ChecksumFlag | Checksum(dec.hash.Sum64()); chksum != dec.trailer.FileChecksum {
@@ -143,7 +145,11 @@ func (dec *Decoder) decodePageIndex(r io.ByteReader) error {
 
 	// Read size of page index.
 	var size uint64
-	if err := binary.Read(r.(io.Reader), binary.BigEndian, &size); err != nil {
+	reader, ok := r.(io.Reader)
+	if !ok {
+		return fmt.Errorf("page index reader does not implement io.Reader")
+	}
+	if err := binary.Read(reader, binary.BigEndian, &size); err != nil {
 		return fmt.Errorf("read page index size: %w", err)
 	}
 
