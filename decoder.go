@@ -166,7 +166,11 @@ func (dec *Decoder) decodePageIndex(r io.ByteReader) error {
 
 	// Read size of page index.
 	var size uint64
-	if err := binary.Read(r.(io.Reader), binary.BigEndian, &size); err != nil {
+	reader, ok := r.(io.Reader)
+	if !ok {
+		return fmt.Errorf("page index reader does not implement io.Reader")
+	}
+	if err := binary.Read(reader, binary.BigEndian, &size); err != nil {
 		return fmt.Errorf("read page index size: %w", err)
 	}
 
