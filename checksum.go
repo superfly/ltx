@@ -148,11 +148,13 @@ func (c Checksum) String() string {
 	return fmt.Sprintf("%016x", uint64(c))
 }
 
+// MarshalJSON implements the json.Marshaler interface for Checksum.
 func (c Checksum) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + c.String() + `"`), nil
 }
 
-func (c *Checksum) UnmarshalJSON(data []byte) (err error) {
+// UnmarshalJSON implements the json.Unmarshaler interface for Checksum.
+func (c *Checksum) UnmarshalJSON(data []byte) error {
 	var s *string
 	if err := json.Unmarshal(data, &s); err != nil {
 		return fmt.Errorf("cannot unmarshal checksum from JSON value")

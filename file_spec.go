@@ -13,7 +13,7 @@ type FileSpec struct {
 	Trailer Trailer
 }
 
-// Write encodes a file spec to a file.
+// WriteTo encodes a file spec to a file.
 func (s *FileSpec) WriteTo(dst io.Writer) (n int64, err error) {
 	enc, err := NewEncoder(dst)
 	if err != nil {
@@ -41,7 +41,7 @@ func (s *FileSpec) WriteTo(dst io.Writer) (n int64, err error) {
 	return enc.N(), nil
 }
 
-// ReadFromFile encodes a file spec to a file. Always return n of zero.
+// ReadFrom decodes a file spec from a reader. Always return n of zero.
 func (s *FileSpec) ReadFrom(src io.Reader) (n int64, err error) {
 	dec := NewDecoder(src)
 
