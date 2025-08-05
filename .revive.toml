@@ -53,4 +53,4 @@ warningCode = 0
 [rule.bare-return]
 [rule.unused-receiver]
 [rule.unhandled-error]
-  arguments = ["fmt.Printf", "fmt.Println", "fmt.Print"]
+  arguments = ["fmt.Printf", "fmt.Println", "fmt.Print", "fmt.Fprintf"]

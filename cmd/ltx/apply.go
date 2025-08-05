@@ -20,7 +20,7 @@ func NewApplyCommand() *ApplyCommand {
 }
 
 // Run executes the command.
-func (c *ApplyCommand) Run(_ context.Context, args []string) (ret error) {
+func (c *ApplyCommand) Run(ctx context.Context, args []string) (ret error) {
 	fs := flag.NewFlagSet("ltx-apply", flag.ContinueOnError)
 	dbPath := fs.String("db", "", "database path")
 	fs.Usage = func() {
@@ -67,7 +67,12 @@ Arguments:
 	return dbFile.Close()
 }
 
-func (*ApplyCommand) applyLTXFile(_ context.Context, dbFile *os.File, filename string) error {
+func (*ApplyCommand) applyLTXFile(ctx context.Context, dbFile *os.File, filename string) error {
+	// Check for context cancellation
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	ltxFile, err := os.Open(filename)
 	if err != nil {
 		return err
