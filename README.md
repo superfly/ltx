@@ -86,12 +86,11 @@ File Checksum
 - **Purpose**: Ensures the LTX file itself hasn't been tampered with
 - **Computation**: Computed over the file contents up to (but not including)
   the file checksum field in the trailer
-- **Important**: The page index is intentionally **excluded** from the file
-  checksum calculation
-- **Rationale**: Page index can be recomputed from the page data itself,
-  making its inclusion redundant
+- **Important**: The page index **is included** in the file checksum calculation
+- **Rationale**: Including the page index prevents tampering with page offset/size
+  mappings, which could redirect reads to incorrect data
 - **Storage**: `FileChecksum` field in the trailer
 
-**Note**: The exclusion of page index from file checksum is by design, not a
-security vulnerability. Page-level checksums can be computed from the data in
-the pages themselves.
+**Security**: The page index is included in the file checksum to detect tampering
+with page mappings. While page data itself has individual checksums, the index
+mappings must also be protected to prevent malicious redirection attacks.

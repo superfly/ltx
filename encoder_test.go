@@ -1,6 +1,7 @@
 package ltx_test
 
 import (
+	"bytes"
 	"io"
 	"math/rand"
 	"path/filepath"
@@ -282,5 +283,116 @@ func TestEncode_EncodePage(t *testing.T) {
 		if err := enc.EncodePage(ltx.PageHeader{Pgno: 1}, make([]byte, 1024)); err == nil || err.Error() != `out-of-order page numbers: 2,1` {
 			t.Fatalf("unexpected error: %s", err)
 		}
+	})
+
+	// TestPageIndexInChecksum verifies that the page index is properly included
+	// in the file checksum calculation to prevent tampering with page mappings.
+	t.Run("PageIndexInChecksum", func(t *testing.T) {
+		// First, create a valid file and verify it decodes correctly
+		var buf1 bytes.Buffer
+		enc1, err := ltx.NewEncoder(&buf1)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		header := ltx.Header{
+			Version:   2,
+			PageSize:  512,
+			Commit:    2,
+			MinTXID:   1,
+			MaxTXID:   2,
+			Timestamp: 1000,
+		}
+		
+		if err := enc1.EncodeHeader(header); err != nil {
+			t.Fatal(err)
+		}
+
+		// Write pages
+		pageData1 := bytes.Repeat([]byte{0x11}, 512)
+		pageData2 := bytes.Repeat([]byte{0x22}, 512)
+		if err := enc1.EncodePage(ltx.PageHeader{Pgno: 1}, pageData1); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc1.EncodePage(ltx.PageHeader{Pgno: 2}, pageData2); err != nil {
+			t.Fatal(err)
+		}
+
+		// Set post-apply checksum (required for snapshots)
+		enc1.SetPostApplyChecksum(ltx.ChecksumFlag | 0x1234)
+
+		// Close the encoder
+		if err := enc1.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		originalData := buf1.Bytes()
+		
+		// Verify the original file decodes correctly
+		dec1 := ltx.NewDecoder(bytes.NewReader(originalData))
+		if err := dec1.DecodeHeader(); err != nil {
+			t.Fatalf("Error decoding original header: %v", err)
+		}
+		
+		// Read all pages from original
+		readBuf := make([]byte, 512)
+		pagesRead := 0
+		for {
+			var pageHeader ltx.PageHeader
+			if err := dec1.DecodePage(&pageHeader, readBuf); err != nil {
+				if err == io.EOF {
+					break
+				}
+				t.Fatalf("Error reading original page: %v", err)
+			}
+			pagesRead++
+		}
+		
+		// Original file should decode successfully
+		if err := dec1.Close(); err != nil {
+			t.Fatalf("Original file failed to decode: %v", err)
+		}
+		
+		t.Logf("Original file decoded successfully with %d pages", pagesRead)
+		
+		// Now create a tampered version - modify the file checksum in trailer to simulate tampering
+		tamperedData := make([]byte, len(originalData))
+		copy(tamperedData, originalData)
+		
+		// Modify the file checksum in the trailer (last 8 bytes)
+		trailerStart := len(tamperedData) - 16
+		fileChecksumStart := trailerStart + 8
+		
+		// Flip some bits in the file checksum to simulate what would happen if page index was tampered
+		tamperedData[fileChecksumStart] ^= 0xFF
+		
+		// Try to decode the tampered file
+		dec2 := ltx.NewDecoder(bytes.NewReader(tamperedData))
+		if err := dec2.DecodeHeader(); err != nil {
+			t.Fatal(err)
+		}
+		
+		// Read all pages from tampered file
+		for {
+			var pageHeader ltx.PageHeader
+			if err := dec2.DecodePage(&pageHeader, readBuf); err != nil {
+				if err == io.EOF {
+					break
+				}
+				t.Fatalf("Error reading tampered page: %v", err)
+			}
+		}
+		
+		// Close should fail with checksum mismatch
+		err = dec2.Close()
+		if err == nil {
+			t.Fatal("Expected checksum mismatch error, but got none - file checksum tampering was not detected!")
+		}
+		
+		if err != ltx.ErrChecksumMismatch {
+			t.Fatalf("Expected ErrChecksumMismatch, got: %v", err)
+		}
+		
+		t.Log("Success: File checksum validation correctly detected tampering")
 	})
 }
