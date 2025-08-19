@@ -307,6 +307,10 @@ func (enc *Encoder) writeToHash(b []byte) {
 }
 
 type PageIndexElem struct {
+	Level   int
+	MinTXID TXID
+	MaxTXID TXID
+
 	Offset int64
 	Size   int64
 }

@@ -66,8 +66,8 @@ func TestDecoder(t *testing.T) {
 	// Verify page index.
 	index := dec.PageIndex()
 	if got, want := index, map[uint32]ltx.PageIndexElem{
-		1: {Offset: 100, Size: 49},
-		2: {Offset: 149, Size: 49},
+		1: {MinTXID: 1, MaxTXID: 1, Offset: 100, Size: 49},
+		2: {MinTXID: 1, MaxTXID: 1, Offset: 149, Size: 49},
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("page index mismatch:\ngot=%#v\nwant=%#v", got, want)
 	}
