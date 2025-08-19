@@ -83,7 +83,7 @@ func (dec *Decoder) Close() error {
 	dec.writeToHash(remainingBytes[:len(remainingBytes)-ChecksumSize])
 
 	// Read page index.
-	if err := dec.decodePageIndex(remaining); err != nil {
+	if dec.pageIndex, err = DecodePageIndex(remaining, 0, dec.header.MinTXID, dec.header.MaxTXID); err != nil {
 		return fmt.Errorf("read page index: %w", err)
 	}
 
@@ -112,42 +112,6 @@ func (dec *Decoder) Close() error {
 	// Update state to mark as closed.
 	dec.state = stateClosed
 
-	return nil
-}
-
-func (dec *Decoder) decodePageIndex(r io.ByteReader) error {
-	pageIndex := make(map[uint32]PageIndexElem)
-
-	for {
-		pgno, err := binary.ReadUvarint(r)
-		if err != nil {
-			return fmt.Errorf("read page index pgno: %w", err)
-		} else if pgno == 0 {
-			break // End when we hit the end marker.
-		}
-
-		offset, err := binary.ReadUvarint(r)
-		if err != nil {
-			return fmt.Errorf("read page index offset: %w", err)
-		}
-		size, err := binary.ReadUvarint(r)
-		if err != nil {
-			return fmt.Errorf("read page index size: %w", err)
-		}
-
-		pageIndex[uint32(pgno)] = PageIndexElem{
-			Offset: int64(offset),
-			Size:   int64(size),
-		}
-	}
-
-	// Read size of page index.
-	var size uint64
-	if err := binary.Read(r.(io.Reader), binary.BigEndian, &size); err != nil {
-		return fmt.Errorf("read page index size: %w", err)
-	}
-
-	dec.pageIndex = pageIndex
 	return nil
 }
 
@@ -340,4 +304,43 @@ func DecodePageData(b []byte) (hdr PageHeader, data []byte, err error) {
 	zr := lz4.NewReader(bytes.NewReader(b[PageHeaderSize:]))
 	data, err = io.ReadAll(zr)
 	return hdr, data, err
+}
+
+// DecodePageIndex decodes the page index from r.
+func DecodePageIndex(r io.ByteReader, level int, minTXID, maxTXID TXID) (map[uint32]PageIndexElem, error) {
+	pageIndex := make(map[uint32]PageIndexElem)
+
+	for {
+		pgno, err := binary.ReadUvarint(r)
+		if err != nil {
+			return nil, fmt.Errorf("read page index pgno: %w", err)
+		} else if pgno == 0 {
+			break // End when we hit the end marker.
+		}
+
+		offset, err := binary.ReadUvarint(r)
+		if err != nil {
+			return nil, fmt.Errorf("read page index offset: %w", err)
+		}
+		size, err := binary.ReadUvarint(r)
+		if err != nil {
+			return nil, fmt.Errorf("read page index size: %w", err)
+		}
+
+		pageIndex[uint32(pgno)] = PageIndexElem{
+			Level:   level,
+			MinTXID: minTXID,
+			MaxTXID: maxTXID,
+			Offset:  int64(offset),
+			Size:    int64(size),
+		}
+	}
+
+	// Read size of page index.
+	var size uint64
+	if err := binary.Read(r.(io.Reader), binary.BigEndian, &size); err != nil {
+		return nil, fmt.Errorf("read page index size: %w", err)
+	}
+
+	return pageIndex, nil
 }
