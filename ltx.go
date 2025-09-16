@@ -20,13 +20,13 @@ const (
 	Magic = "LTX1"
 
 	// Version is the current version of the LTX file format.
-	Version = 2
+	Version = 3
 )
 
 // Size constants.
 const (
 	HeaderSize     = 100
-	PageHeaderSize = 4
+	PageHeaderSize = 6
 	TrailerSize    = 16
 )
 
@@ -407,7 +407,8 @@ func IsValidPageSize(sz uint32) bool {
 
 // PageHeader represents the header for a single page in an LTX file.
 type PageHeader struct {
-	Pgno uint32
+	Pgno  uint32
+	Flags uint16
 }
 
 // IsZero returns true if the header is empty.
@@ -420,6 +421,9 @@ func (h *PageHeader) Validate() error {
 	if h.Pgno == 0 {
 		return fmt.Errorf("page number required")
 	}
+	if h.Flags != 0 {
+		return fmt.Errorf("no flags allowed, reserved for future use")
+	}
 	return nil
 }
 
@@ -427,6 +431,7 @@ func (h *PageHeader) Validate() error {
 func (h *PageHeader) MarshalBinary() ([]byte, error) {
 	b := make([]byte, PageHeaderSize)
 	binary.BigEndian.PutUint32(b[0:], h.Pgno)
+	binary.BigEndian.PutUint16(b[4:], h.Flags)
 	return b, nil
 }
 
@@ -437,6 +442,7 @@ func (h *PageHeader) UnmarshalBinary(b []byte) error {
 	}
 
 	h.Pgno = binary.BigEndian.Uint32(b[0:])
+	h.Flags = binary.BigEndian.Uint16(b[4:])
 	return nil
 }
 
