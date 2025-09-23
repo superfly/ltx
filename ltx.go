@@ -143,11 +143,13 @@ func (t TXID) String() string {
 	return fmt.Sprintf("%016x", uint64(t))
 }
 
+// MarshalJSON implements the json.Marshaler interface for TXID.
 func (t TXID) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + t.String() + `"`), nil
 }
 
-func (t *TXID) UnmarshalJSON(data []byte) (err error) {
+// UnmarshalJSON implements the json.Unmarshaler interface for TXID.
+func (t *TXID) UnmarshalJSON(data []byte) error {
 	var s *string
 	if err := json.Unmarshal(data, &s); err != nil {
 		return fmt.Errorf("cannot unmarshal TXID from JSON value")
@@ -453,9 +455,9 @@ func ParseFilename(name string) (minTXID, maxTXID TXID, err error) {
 		return 0, 0, fmt.Errorf("invalid ltx filename: %s", name)
 	}
 
-	min, _ := strconv.ParseUint(a[1], 16, 64)
-	max, _ := strconv.ParseUint(a[2], 16, 64)
-	return TXID(min), TXID(max), nil
+	minVal, _ := strconv.ParseUint(a[1], 16, 64)
+	maxVal, _ := strconv.ParseUint(a[2], 16, 64)
+	return TXID(minVal), TXID(maxVal), nil
 }
 
 // FormatTimestamp returns t with a fixed-width, millisecond-resolution UTC format.
@@ -488,11 +490,12 @@ func FormatFilename(minTXID, maxTXID TXID) string {
 	return fmt.Sprintf("%s-%s.ltx", minTXID.String(), maxTXID.String())
 }
 
-const PENDING_BYTE = 0x40000000
+// PendingByte is the value of the pending byte lock in SQLite.
+const PendingByte = 0x40000000
 
-// LockPgno returns the page number where the PENDING_BYTE exists.
+// LockPgno returns the page number where the PendingByte exists.
 func LockPgno(pageSize uint32) uint32 {
-	return uint32(PENDING_BYTE/int64(pageSize)) + 1
+	return uint32(PendingByte/int64(pageSize)) + 1
 }
 
 // FileIterator represents an iterator over a collection of LTX files.
@@ -545,7 +548,7 @@ func NewFileInfoSliceIterator(a []*FileInfo) *FileInfoSliceIterator {
 }
 
 // Close always returns nil.
-func (itr *FileInfoSliceIterator) Close() error { return nil }
+func (*FileInfoSliceIterator) Close() error { return nil }
 
 // Next moves to the next wal segment. Returns true if another segment is available.
 func (itr *FileInfoSliceIterator) Next() bool {
@@ -558,7 +561,7 @@ func (itr *FileInfoSliceIterator) Next() bool {
 }
 
 // Err always returns nil.
-func (itr *FileInfoSliceIterator) Err() error { return nil }
+func (*FileInfoSliceIterator) Err() error { return nil }
 
 // Item returns the metadata from the currently positioned wal segment.
 func (itr *FileInfoSliceIterator) Item() *FileInfo {
@@ -587,7 +590,7 @@ func (info *FileInfo) PreApplyPos() Pos {
 	}
 }
 
-// PostApplyPos returns the replication position after the LTX file is applied.
+// Pos returns the replication position after the LTX file is applied.
 func (info *FileInfo) Pos() Pos {
 	return Pos{
 		TXID:              info.MaxTXID,
