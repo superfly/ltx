@@ -13,6 +13,20 @@ type CompactorStatus struct {
 	Total uint32 // Total pages to compact (from Commit field)
 }
 
+// IsZero returns true if the status has not been initialized.
+func (s CompactorStatus) IsZero() bool {
+	return s.N == 0 && s.Total == 0
+}
+
+// Pct returns the percentage of compaction complete (0.0 to 1.0).
+// Returns 0 if Total is zero.
+func (s CompactorStatus) Pct() float64 {
+	if s.Total == 0 {
+		return 0
+	}
+	return float64(s.N) / float64(s.Total)
+}
+
 // Compactor represents a compactor of LTX files.
 type Compactor struct {
 	enc    *Encoder

@@ -340,8 +340,12 @@ func TestCompactor_Compact(t *testing.T) {
 		}
 
 		// Status should be zero before compaction.
-		if got := c.Status(); got.N != 0 || got.Total != 0 {
+		if got := c.Status(); !got.IsZero() {
 			t.Fatalf("expected zero status before compaction, got N=%d, Total=%d", got.N, got.Total)
+		}
+		// Pct should return 0 when Total is 0 (avoid divide by zero).
+		if got := c.Status().Pct(); got != 0 {
+			t.Fatalf("expected Pct()=0 before compaction, got %f", got)
 		}
 
 		if err := c.Compact(context.Background()); err != nil {
@@ -356,6 +360,10 @@ func TestCompactor_Compact(t *testing.T) {
 		// N should be the last page that was written (page 5).
 		if got, want := status.N, uint32(5); got != want {
 			t.Fatalf("Status().N=%d, want %d", got, want)
+		}
+		// Pct should return 1.0 when complete.
+		if got, want := status.Pct(), 1.0; got != want {
+			t.Fatalf("Status().Pct()=%f, want %f", got, want)
 		}
 	})
 }
