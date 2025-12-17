@@ -311,4 +311,51 @@ func TestCompactor_Compact(t *testing.T) {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
+
+	t.Run("Status", func(t *testing.T) {
+		bufs := make([]bytes.Buffer, 2)
+		writeFileSpec(t, &bufs[0], &ltx.FileSpec{
+			Header: ltx.Header{Version: ltx.Version, PageSize: 1024, Commit: 3, MinTXID: 1, MaxTXID: 1, Timestamp: 1000},
+			Pages: []ltx.PageSpec{
+				{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x81}, 1024)},
+				{Header: ltx.PageHeader{Pgno: 2}, Data: bytes.Repeat([]byte{0x82}, 1024)},
+				{Header: ltx.PageHeader{Pgno: 3}, Data: bytes.Repeat([]byte{0x83}, 1024)},
+			},
+			Trailer: ltx.Trailer{PostApplyChecksum: 0x8a249272ad9f7dea},
+		})
+		writeFileSpec(t, &bufs[1], &ltx.FileSpec{
+			Header: ltx.Header{Version: ltx.Version, PageSize: 1024, Commit: 5, MinTXID: 2, MaxTXID: 2, Timestamp: 2000, PreApplyChecksum: 0x8a249272ad9f7dea},
+			Pages: []ltx.PageSpec{
+				{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x91}, 1024)},
+				{Header: ltx.PageHeader{Pgno: 4}, Data: bytes.Repeat([]byte{0x94}, 1024)},
+				{Header: ltx.PageHeader{Pgno: 5}, Data: bytes.Repeat([]byte{0x95}, 1024)},
+			},
+			Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 2},
+		})
+
+		// Compact files together.
+		c, err := ltx.NewCompactor(io.Discard, []io.Reader{&bufs[0], &bufs[1]})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Status should be zero before compaction.
+		if got := c.Status(); got.N != 0 || got.Total != 0 {
+			t.Fatalf("expected zero status before compaction, got N=%d, Total=%d", got.N, got.Total)
+		}
+
+		if err := c.Compact(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+
+		// After compaction, Status should reflect progress.
+		status := c.Status()
+		if got, want := status.Total, uint32(5); got != want {
+			t.Fatalf("Status().Total=%d, want %d", got, want)
+		}
+		// N should be the last page that was written (page 5).
+		if got, want := status.N, uint32(5); got != want {
+			t.Fatalf("Status().N=%d, want %d", got, want)
+		}
+	})
 }
