@@ -243,18 +243,41 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 
 	offset := enc.n
 
-	// Encode & write header.
+	// Compress data first to get the compressed size.
+	enc.buf.Reset()
+	enc.zw.Reset(&enc.buf)
+	if _, err = enc.zw.Write(data); err != nil {
+		return fmt.Errorf("compress page data: %w", err)
+	}
+	if err := enc.zw.Close(); err != nil {
+		return fmt.Errorf("close lz4 writer: %w", err)
+	}
+	compressed := enc.buf.Bytes()
+
+	// Set flag indicating compressed size follows the page header.
+	hdr.Flags |= PageHeaderFlagCompressedSize
+
+	// Write page header.
 	b, err := hdr.MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	} else if _, err := enc.write(b); err != nil {
-		return fmt.Errorf("write: %w", err)
+		return fmt.Errorf("write page header: %w", err)
 	}
 
-	// Write data to file.
-	if _, err = enc.writeCompressed(data); err != nil {
-		return fmt.Errorf("write page data: %w", err)
+	// Write compressed size (4 bytes, big-endian).
+	sizeBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(sizeBuf, uint32(len(compressed)))
+	if _, err := enc.write(sizeBuf); err != nil {
+		return fmt.Errorf("write compressed size: %w", err)
 	}
+
+	// Write compressed data.
+	if _, err := enc.w.Write(compressed); err != nil {
+		return fmt.Errorf("write compressed data: %w", err)
+	}
+	_, _ = enc.hash.Write(data) // hash the uncompressed data
+	enc.n += int64(len(compressed))
 
 	enc.pagesWritten++
 	enc.prevPgno = hdr.Pgno
@@ -270,34 +293,6 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 func (enc *Encoder) write(b []byte) (n int, err error) {
 	n, err = enc.w.Write(b)
 	enc.writeToHash(b[:n])
-	return n, err
-}
-
-// write to the compressed writer & add to the checksum.
-// Returns the size of the compressed data.
-func (enc *Encoder) writeCompressed(b []byte) (n int, err error) {
-	// Reset the buffer & compressed writer.
-	enc.buf.Reset()
-	enc.zw.Reset(&enc.buf)
-
-	// Write to the compressed writer to the buffer and then write the buffer to the uncompressed writer.
-	// This is necessary so we can calculate the size of the compressed data for the page index.
-	if _, err = enc.zw.Write(b); err != nil {
-		return n, err
-	}
-
-	// Close the compressed writer to flush any remaining data.
-	if err := enc.zw.Close(); err != nil {
-		return n, fmt.Errorf("cannot close lz4 writer: %w", err)
-	}
-
-	compressed := enc.buf.Bytes()
-	n, err = enc.w.Write(compressed)
-
-	// Write the uncompressed data to the hash, but add the compressed length to the size.
-	_, _ = enc.hash.Write(b)
-	enc.n += int64(len(compressed))
-
 	return n, err
 }
 

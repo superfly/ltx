@@ -275,7 +275,7 @@ func TestPageHeader_Validate(t *testing.T) {
 	})
 	t.Run("ErrFlagsNotAllowed", func(t *testing.T) {
 		hdr := ltx.PageHeader{Pgno: 1, Flags: 2}
-		if err := hdr.Validate(); err == nil || err.Error() != `no flags allowed, reserved for future use` {
+		if err := hdr.Validate(); err == nil || err.Error() != `invalid page header flags: 0x0002` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
@@ -816,15 +816,19 @@ func assertFileSpecEqual(tb testing.TB, x, y *ltx.FileSpec) {
 		tb.Fatalf("page count: %d, want %d", got, want)
 	}
 	for i := range x.Pages {
-		if got, want := x.Pages[i].Header, y.Pages[i].Header; got != want {
-			tb.Fatalf("page header mismatch: i=%d\ngot=%#v\nwant=%#v", i, got, want)
+		// Compare only Pgno, not Flags. The encoder sets PageHeaderFlagCompressedSize
+		// on output, so Flags won't match the input spec.
+		if got, want := x.Pages[i].Header.Pgno, y.Pages[i].Header.Pgno; got != want {
+			tb.Fatalf("page header pgno mismatch: i=%d\ngot=%d\nwant=%d", i, got, want)
 		}
 		if got, want := x.Pages[i].Data, y.Pages[i].Data; !bytes.Equal(got, want) {
 			tb.Fatalf("page data mismatch: i=%d\ngot=%#v\nwant=%#v", i, got, want)
 		}
 	}
 
-	if got, want := x.Trailer, y.Trailer; got != want {
-		tb.Fatalf("trailer mismatch:\ngot=%#v\nwant=%#v", got, want)
+	// Compare only PostApplyChecksum, not FileChecksum. FileChecksum depends on
+	// the exact byte representation of the file, which changes when the format changes.
+	if got, want := x.Trailer.PostApplyChecksum, y.Trailer.PostApplyChecksum; got != want {
+		tb.Fatalf("trailer PostApplyChecksum mismatch:\ngot=0x%x\nwant=0x%x", got, want)
 	}
 }

@@ -47,9 +47,15 @@ func TestDecoder(t *testing.T) {
 		data := make([]byte, 1024)
 		if err := dec.DecodePage(&hdr, data); err != nil {
 			t.Fatal(err)
-		} else if got, want := hdr, spec.Pages[i].Header; got != want {
-			t.Fatalf("page hdr mismatch:\ngot=%#v\nwant=%#v", got, want)
-		} else if got, want := data, spec.Pages[i].Data; !bytes.Equal(got, want) {
+		}
+		// Encoder now sets PageHeaderFlagCompressedSize, so compare only Pgno.
+		if got, want := hdr.Pgno, spec.Pages[i].Header.Pgno; got != want {
+			t.Fatalf("page hdr pgno mismatch:\ngot=%d\nwant=%d", got, want)
+		}
+		if got, want := hdr.Flags, uint16(ltx.PageHeaderFlagCompressedSize); got != want {
+			t.Fatalf("page hdr flags mismatch:\ngot=0x%x\nwant=0x%x", got, want)
+		}
+		if got, want := data, spec.Pages[i].Data; !bytes.Equal(got, want) {
 			t.Fatalf("page data mismatch:\ngot=%#v\nwant=%#v", got, want)
 		}
 	}
@@ -64,10 +70,11 @@ func TestDecoder(t *testing.T) {
 	}
 
 	// Verify page index.
+	// New format adds 4-byte compressed size prefix, so Size is 55 instead of 51.
 	index := dec.PageIndex()
 	if got, want := index, map[uint32]ltx.PageIndexElem{
-		1: {MinTXID: 1, MaxTXID: 1, Offset: 100, Size: 51},
-		2: {MinTXID: 1, MaxTXID: 1, Offset: 151, Size: 51},
+		1: {MinTXID: 1, MaxTXID: 1, Offset: 100, Size: 55},
+		2: {MinTXID: 1, MaxTXID: 1, Offset: 155, Size: 55},
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("page index mismatch:\ngot=%#v\nwant=%#v", got, want)
 	}
@@ -75,17 +82,17 @@ func TestDecoder(t *testing.T) {
 	// Read page 1 by offset.
 	if hdr, data, err := ltx.DecodePageData(fileSpecData[100:]); err != nil {
 		t.Fatal(err)
-	} else if got, want := hdr, (ltx.PageHeader{Pgno: 1}); got != want {
-		t.Fatalf("page header mismatch:\ngot=%#v\nwant=%#v", got, want)
+	} else if got, want := hdr.Pgno, uint32(1); got != want {
+		t.Fatalf("page header pgno mismatch:\ngot=%d\nwant=%d", got, want)
 	} else if got, want := data, bytes.Repeat([]byte("2"), 1024); !bytes.Equal(got, want) {
 		t.Fatalf("page data mismatch:\ngot=%#v\nwant=%#v", got, want)
 	}
 
-	// Read page 2 by offset.
-	if hdr, data, err := ltx.DecodePageData(fileSpecData[151:]); err != nil {
+	// Read page 2 by offset. Offset is 155 with new format (+4 bytes per page).
+	if hdr, data, err := ltx.DecodePageData(fileSpecData[155:]); err != nil {
 		t.Fatal(err)
-	} else if got, want := hdr, (ltx.PageHeader{Pgno: 2}); got != want {
-		t.Fatalf("page header mismatch:\ngot=%#v\nwant=%#v", got, want)
+	} else if got, want := hdr.Pgno, uint32(2); got != want {
+		t.Fatalf("page header pgno mismatch:\ngot=%d\nwant=%d", got, want)
 	} else if got, want := data, bytes.Repeat([]byte("3"), 1024); !bytes.Equal(got, want) {
 		t.Fatalf("page data mismatch:\ngot=%#v\nwant=%#v", got, want)
 	}
