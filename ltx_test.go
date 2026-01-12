@@ -274,8 +274,8 @@ func TestPageHeader_Validate(t *testing.T) {
 		}
 	})
 	t.Run("ErrFlagsNotAllowed", func(t *testing.T) {
-		hdr := ltx.PageHeader{Pgno: 1, Flags: 2}
-		if err := hdr.Validate(); err == nil || err.Error() != `invalid page header flags: 0x0002` {
+		hdr := ltx.PageHeader{Pgno: 1, Flags: 4}
+		if err := hdr.Validate(); err == nil || err.Error() != `invalid page header flags: 0x0004` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})

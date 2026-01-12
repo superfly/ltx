@@ -70,11 +70,11 @@ func TestDecoder(t *testing.T) {
 	}
 
 	// Verify page index.
-	// New format adds 4-byte compressed size prefix, so Size is 55 instead of 51.
+	// Block format: PageHeader(6) + Size(4) + compressed block data (~26 bytes for repetitive data).
 	index := dec.PageIndex()
 	if got, want := index, map[uint32]ltx.PageIndexElem{
-		1: {MinTXID: 1, MaxTXID: 1, Offset: 100, Size: 55},
-		2: {MinTXID: 1, MaxTXID: 1, Offset: 155, Size: 55},
+		1: {MinTXID: 1, MaxTXID: 1, Offset: 100, Size: 36},
+		2: {MinTXID: 1, MaxTXID: 1, Offset: 136, Size: 36},
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("page index mismatch:\ngot=%#v\nwant=%#v", got, want)
 	}
@@ -88,8 +88,8 @@ func TestDecoder(t *testing.T) {
 		t.Fatalf("page data mismatch:\ngot=%#v\nwant=%#v", got, want)
 	}
 
-	// Read page 2 by offset. Offset is 155 with new format (+4 bytes per page).
-	if hdr, data, err := ltx.DecodePageData(fileSpecData[155:]); err != nil {
+	// Read page 2 by offset. Offset is 136 with block format.
+	if hdr, data, err := ltx.DecodePageData(fileSpecData[136:]); err != nil {
 		t.Fatal(err)
 	} else if got, want := hdr.Pgno, uint32(2); got != want {
 		t.Fatalf("page header pgno mismatch:\ngot=%d\nwant=%d", got, want)

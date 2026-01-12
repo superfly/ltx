@@ -408,10 +408,16 @@ func IsValidPageSize(sz uint32) bool {
 // PageHeader flags.
 const (
 	// PageHeaderFlagCompressedSize indicates that a 4-byte compressed size
-	// field follows the page header. This allows the decoder to know the exact
-	// size of the LZ4 frame without relying on the LZ4 library's frame
-	// concatenation behavior.
+	// field follows the page header. When set, data uses LZ4 block format
+	// (not frame format).
 	PageHeaderFlagCompressedSize = uint16(1 << 0)
+
+	// PageHeaderFlagUncompressed indicates the page data is stored without
+	// compression. Used when LZ4 compression would not reduce size.
+	PageHeaderFlagUncompressed = uint16(1 << 1)
+
+	// pageHeaderFlagMask is the mask of valid page header flags.
+	pageHeaderFlagMask = PageHeaderFlagCompressedSize | PageHeaderFlagUncompressed
 )
 
 // PageHeader represents the header for a single page in an LTX file.
@@ -430,7 +436,7 @@ func (h *PageHeader) Validate() error {
 	if h.Pgno == 0 {
 		return fmt.Errorf("page number required")
 	}
-	if h.Flags & ^PageHeaderFlagCompressedSize != 0 {
+	if h.Flags & ^pageHeaderFlagMask != 0 {
 		return fmt.Errorf("invalid page header flags: 0x%04x", h.Flags)
 	}
 	return nil

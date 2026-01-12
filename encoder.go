@@ -1,7 +1,6 @@
 package ltx
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"hash"
@@ -14,16 +13,18 @@ import (
 
 // Encoder implements an encoder for an LTX file.
 type Encoder struct {
-	w     io.Writer   // main writer
-	zw    *lz4.Writer // compressed writer
+	w     io.Writer // main writer
 	state string
 
 	header  Header
 	trailer Trailer
-	buf     bytes.Buffer
 	hash    hash.Hash64
 	index   map[uint32]PageIndexElem // page number to offset
 	n       int64                    // bytes written
+
+	// LZ4 block compression
+	compressor  lz4.Compressor
+	compressBuf []byte
 
 	// Track how many of each write has occurred to move state.
 	prevPgno     uint32
@@ -32,24 +33,11 @@ type Encoder struct {
 
 // NewEncoder returns a new instance of Encoder.
 func NewEncoder(w io.Writer) (*Encoder, error) {
-	enc := &Encoder{
+	return &Encoder{
 		w:     w,
 		state: stateHeader,
 		index: make(map[uint32]PageIndexElem),
-	}
-
-	// The compressed writer writes to a buffer so we can calculate the size
-	// of the compressed data for the page index.
-	zw := lz4.NewWriter(&enc.buf)
-	if err := zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb)); err != nil { // minimize memory allocation
-		return nil, fmt.Errorf("cannot set lz4 block size: %w", err)
-	}
-	if err := zw.Apply(lz4.CompressionLevelOption(lz4.Fast)); err != nil {
-		return nil, fmt.Errorf("cannot set lz4 compression level: %w", err)
-	}
-	enc.zw = zw
-
-	return enc, nil
+	}, nil
 }
 
 // N returns the number of bytes written.
@@ -90,11 +78,6 @@ func (enc *Encoder) Close() error {
 		return fmt.Errorf("marshal empty page header: %w", err)
 	} else if _, err := enc.write(b0); err != nil {
 		return fmt.Errorf("write empty page header: %w", err)
-	}
-
-	// Close the compressed writer.
-	if err := enc.zw.Close(); err != nil {
-		return fmt.Errorf("cannot close lz4 writer: %w", err)
 	}
 
 	// Write index to file.
@@ -243,19 +226,29 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 
 	offset := enc.n
 
-	// Compress data first to get the compressed size.
-	enc.buf.Reset()
-	enc.zw.Reset(&enc.buf)
-	if _, err = enc.zw.Write(data); err != nil {
+	// Allocate compression buffer if needed.
+	if enc.compressBuf == nil {
+		enc.compressBuf = make([]byte, lz4.CompressBlockBound(int(enc.header.PageSize)))
+	}
+
+	// Compress data using LZ4 block compression.
+	n, err := enc.compressor.CompressBlock(data, enc.compressBuf)
+	if err != nil {
 		return fmt.Errorf("compress page data: %w", err)
 	}
-	if err := enc.zw.Close(); err != nil {
-		return fmt.Errorf("close lz4 writer: %w", err)
-	}
-	compressed := enc.buf.Bytes()
 
-	// Set flag indicating compressed size follows the page header.
+	// Set flag indicating compressed size follows the page header (block format).
 	hdr.Flags |= PageHeaderFlagCompressedSize
+
+	// Determine what data to write based on compression result.
+	var writeData []byte
+	if n == 0 || n >= len(data) {
+		// Incompressible or compression didn't help - store uncompressed.
+		hdr.Flags |= PageHeaderFlagUncompressed
+		writeData = data
+	} else {
+		writeData = enc.compressBuf[:n]
+	}
 
 	// Write page header.
 	b, err := hdr.MarshalBinary()
@@ -265,19 +258,19 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 		return fmt.Errorf("write page header: %w", err)
 	}
 
-	// Write compressed size (4 bytes, big-endian).
+	// Write data size (4 bytes, big-endian).
 	sizeBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(sizeBuf, uint32(len(compressed)))
+	binary.BigEndian.PutUint32(sizeBuf, uint32(len(writeData)))
 	if _, err := enc.write(sizeBuf); err != nil {
-		return fmt.Errorf("write compressed size: %w", err)
+		return fmt.Errorf("write data size: %w", err)
 	}
 
-	// Write compressed data.
-	if _, err := enc.w.Write(compressed); err != nil {
-		return fmt.Errorf("write compressed data: %w", err)
+	// Write page data (compressed or uncompressed).
+	if _, err := enc.w.Write(writeData); err != nil {
+		return fmt.Errorf("write page data: %w", err)
 	}
 	_, _ = enc.hash.Write(data) // hash the uncompressed data
-	enc.n += int64(len(compressed))
+	enc.n += int64(len(writeData))
 
 	enc.pagesWritten++
 	enc.prevPgno = hdr.Pgno
