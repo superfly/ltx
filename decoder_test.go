@@ -2,6 +2,7 @@ package ltx_test
 
 import (
 	"bytes"
+	"crypto/rand"
 	"io"
 	"reflect"
 	"testing"
@@ -235,6 +236,152 @@ func TestDecoder_DecodeDatabaseTo(t *testing.T) {
 		writeFileSpec(t, &buf, spec)
 		dec := ltx.NewDecoder(&buf)
 		if err := dec.DecodeDatabaseTo(io.Discard); err == nil || err.Error() != `cannot decode non-snapshot LTX file to SQLite database` {
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestDecoder_64KBPageSize(t *testing.T) {
+	const pageSize = 65536 // 64KB - maximum SQLite page size
+
+	t.Run("Compressible", func(t *testing.T) {
+		// Test with compressible data (repetitive pattern).
+		page1Data := bytes.Repeat([]byte("A"), pageSize)
+		page2Data := bytes.Repeat([]byte("B"), pageSize)
+
+		// Calculate correct post-apply checksum.
+		chksum := ltx.ChecksumFlag
+		chksum = ltx.ChecksumFlag | (chksum ^ ltx.ChecksumPage(1, page1Data))
+		chksum = ltx.ChecksumFlag | (chksum ^ ltx.ChecksumPage(2, page2Data))
+
+		var buf bytes.Buffer
+		enc, err := ltx.NewEncoder(&buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodeHeader(ltx.Header{
+			Version:   ltx.Version,
+			PageSize:  pageSize,
+			Commit:    2,
+			MinTXID:   1,
+			MaxTXID:   1,
+			Timestamp: 1000,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodePage(ltx.PageHeader{Pgno: 1}, page1Data); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodePage(ltx.PageHeader{Pgno: 2}, page2Data); err != nil {
+			t.Fatal(err)
+		}
+		enc.SetPostApplyChecksum(chksum)
+		if err := enc.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		// Decode and verify.
+		dec := ltx.NewDecoder(&buf)
+		if err := dec.DecodeHeader(); err != nil {
+			t.Fatal(err)
+		}
+
+		var hdr ltx.PageHeader
+		data := make([]byte, pageSize)
+
+		if err := dec.DecodePage(&hdr, data); err != nil {
+			t.Fatal(err)
+		}
+		if hdr.Pgno != 1 {
+			t.Fatalf("expected pgno 1, got %d", hdr.Pgno)
+		}
+		if !bytes.Equal(data, page1Data) {
+			t.Fatal("page 1 data mismatch")
+		}
+		// Should be compressed (flag without uncompressed bit).
+		if hdr.Flags != ltx.PageHeaderFlagCompressedSize {
+			t.Fatalf("expected compressed flag only, got 0x%x", hdr.Flags)
+		}
+
+		if err := dec.DecodePage(&hdr, data); err != nil {
+			t.Fatal(err)
+		}
+		if hdr.Pgno != 2 {
+			t.Fatalf("expected pgno 2, got %d", hdr.Pgno)
+		}
+		if !bytes.Equal(data, page2Data) {
+			t.Fatal("page 2 data mismatch")
+		}
+
+		if err := dec.DecodePage(&hdr, data); err != io.EOF {
+			t.Fatalf("expected EOF, got %v", err)
+		}
+		if err := dec.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("Incompressible", func(t *testing.T) {
+		// Test with incompressible data (truly random bytes).
+		page1Data := make([]byte, pageSize)
+		if _, err := rand.Read(page1Data); err != nil {
+			t.Fatal(err)
+		}
+
+		// Calculate correct post-apply checksum.
+		chksum := ltx.ChecksumFlag | ltx.ChecksumPage(1, page1Data)
+
+		var buf bytes.Buffer
+		enc, err := ltx.NewEncoder(&buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodeHeader(ltx.Header{
+			Version:   ltx.Version,
+			PageSize:  pageSize,
+			Commit:    1,
+			MinTXID:   1,
+			MaxTXID:   1,
+			Timestamp: 1000,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodePage(ltx.PageHeader{Pgno: 1}, page1Data); err != nil {
+			t.Fatal(err)
+		}
+		enc.SetPostApplyChecksum(chksum)
+		if err := enc.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		// Decode and verify.
+		dec := ltx.NewDecoder(&buf)
+		if err := dec.DecodeHeader(); err != nil {
+			t.Fatal(err)
+		}
+
+		var hdr ltx.PageHeader
+		data := make([]byte, pageSize)
+
+		if err := dec.DecodePage(&hdr, data); err != nil {
+			t.Fatal(err)
+		}
+		if hdr.Pgno != 1 {
+			t.Fatalf("expected pgno 1, got %d", hdr.Pgno)
+		}
+		if !bytes.Equal(data, page1Data) {
+			t.Fatal("page 1 data mismatch")
+		}
+		// Should be stored uncompressed (random data doesn't compress).
+		expectedFlags := ltx.PageHeaderFlagCompressedSize | ltx.PageHeaderFlagUncompressed
+		if hdr.Flags != expectedFlags {
+			t.Fatalf("expected uncompressed flags 0x%x, got 0x%x", expectedFlags, hdr.Flags)
+		}
+
+		if err := dec.DecodePage(&hdr, data); err != io.EOF {
+			t.Fatalf("expected EOF, got %v", err)
+		}
+		if err := dec.Close(); err != nil {
 			t.Fatal(err)
 		}
 	})
