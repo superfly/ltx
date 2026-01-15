@@ -180,8 +180,8 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 	}
 
 	// Read page data using format-specific approach.
-	if hdr.Flags&PageHeaderFlagCompressedSize != 0 {
-		// New block format: read size prefix, then block data.
+	if hdr.Flags&PageHeaderFlagSize != 0 {
+		// New block format: read size prefix, then LZ4 block data.
 		sizeBuf := make([]byte, 4)
 		if _, err := io.ReadFull(dec.r, sizeBuf); err != nil {
 			return fmt.Errorf("read data size: %w", err)
@@ -189,23 +189,12 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 		dec.writeToHash(sizeBuf)
 		dataSize := binary.BigEndian.Uint32(sizeBuf)
 
-		if hdr.Flags&PageHeaderFlagUncompressed != 0 {
-			// Data stored uncompressed - validate size matches page size.
-			if dataSize != dec.header.PageSize {
-				return fmt.Errorf("uncompressed data size mismatch: got %d, expected %d", dataSize, dec.header.PageSize)
-			}
-			if _, err := io.ReadFull(dec.r, data); err != nil {
-				return fmt.Errorf("read uncompressed data: %w", err)
-			}
-		} else {
-			// LZ4 block compressed data.
-			compressed := make([]byte, dataSize)
-			if _, err := io.ReadFull(dec.r, compressed); err != nil {
-				return fmt.Errorf("read compressed data: %w", err)
-			}
-			if _, err := lz4.UncompressBlock(compressed, data); err != nil {
-				return fmt.Errorf("decompress block: %w", err)
-			}
+		compressed := make([]byte, dataSize)
+		if _, err := io.ReadFull(dec.r, compressed); err != nil {
+			return fmt.Errorf("read compressed data: %w", err)
+		}
+		if _, err := lz4.UncompressBlock(compressed, data); err != nil {
+			return fmt.Errorf("decompress block: %w", err)
 		}
 	} else {
 		// Old format: use LimitedReader workaround for lz4 frame concatenation.
@@ -345,7 +334,7 @@ func DecodePageData(b []byte) (hdr PageHeader, data []byte, err error) {
 		return hdr, data, nil
 	}
 
-	if hdr.Flags&PageHeaderFlagCompressedSize != 0 {
+	if hdr.Flags&PageHeaderFlagSize != 0 {
 		// New block format: read size and decompress.
 		if len(b) < PageHeaderSize+4 {
 			return hdr, nil, fmt.Errorf("buffer too small for size prefix")
@@ -357,22 +346,16 @@ func DecodePageData(b []byte) (hdr PageHeader, data []byte, err error) {
 			return hdr, nil, fmt.Errorf("buffer too small for data: need %d, have %d", offset+int(dataSize), len(b))
 		}
 
-		if hdr.Flags&PageHeaderFlagUncompressed != 0 {
-			// Data stored uncompressed.
-			data = make([]byte, dataSize)
-			copy(data, b[offset:offset+int(dataSize)])
-		} else {
-			// LZ4 block compressed data.
-			compressed := b[offset : offset+int(dataSize)]
-			// Estimate uncompressed size - pages are typically 512-65536 bytes.
-			// We'll use a reasonable upper bound and resize if needed.
-			data = make([]byte, 65536)
-			n, err := lz4.UncompressBlock(compressed, data)
-			if err != nil {
-				return hdr, nil, fmt.Errorf("decompress block: %w", err)
-			}
-			data = data[:n]
+		// LZ4 block compressed data.
+		compressed := b[offset : offset+int(dataSize)]
+		// Estimate uncompressed size - pages are typically 512-65536 bytes.
+		// We'll use a reasonable upper bound and resize if needed.
+		data = make([]byte, 65536)
+		n, err := lz4.UncompressBlock(compressed, data)
+		if err != nil {
+			return hdr, nil, fmt.Errorf("decompress block: %w", err)
 		}
+		data = data[:n]
 	} else {
 		// Old frame format: use LZ4 reader.
 		r := bytes.NewReader(b[PageHeaderSize:])

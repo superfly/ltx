@@ -236,19 +236,14 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 	if err != nil {
 		return fmt.Errorf("compress page data: %w", err)
 	}
-
-	// Set flag indicating compressed size follows the page header (block format).
-	hdr.Flags |= PageHeaderFlagCompressedSize
-
-	// Determine what data to write based on compression result.
-	var writeData []byte
-	if n == 0 || n >= len(data) {
-		// Incompressible or compression didn't help - store uncompressed.
-		hdr.Flags |= PageHeaderFlagUncompressed
-		writeData = data
-	} else {
-		writeData = enc.compressBuf[:n]
+	if n == 0 {
+		return fmt.Errorf("lz4 block compression failed")
 	}
+
+	// Set flag indicating size field follows the page header (block format).
+	hdr.Flags |= PageHeaderFlagSize
+
+	writeData := enc.compressBuf[:n]
 
 	// Write page header.
 	b, err := hdr.MarshalBinary()

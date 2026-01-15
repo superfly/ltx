@@ -816,7 +816,7 @@ func assertFileSpecEqual(tb testing.TB, x, y *ltx.FileSpec) {
 		tb.Fatalf("page count: %d, want %d", got, want)
 	}
 	for i := range x.Pages {
-		// Compare only Pgno, not Flags. The encoder sets PageHeaderFlagCompressedSize
+		// Compare only Pgno, not Flags. The encoder sets PageHeaderFlagSize
 		// on output, so Flags won't match the input spec.
 		if got, want := x.Pages[i].Header.Pgno, y.Pages[i].Header.Pgno; got != want {
 			tb.Fatalf("page header pgno mismatch: i=%d\ngot=%d\nwant=%d", i, got, want)

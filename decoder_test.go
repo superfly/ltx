@@ -49,11 +49,11 @@ func TestDecoder(t *testing.T) {
 		if err := dec.DecodePage(&hdr, data); err != nil {
 			t.Fatal(err)
 		}
-		// Encoder now sets PageHeaderFlagCompressedSize, so compare only Pgno.
+		// Encoder now sets PageHeaderFlagSize, so compare only Pgno.
 		if got, want := hdr.Pgno, spec.Pages[i].Header.Pgno; got != want {
 			t.Fatalf("page hdr pgno mismatch:\ngot=%d\nwant=%d", got, want)
 		}
-		if got, want := hdr.Flags, uint16(ltx.PageHeaderFlagCompressedSize); got != want {
+		if got, want := hdr.Flags, uint16(ltx.PageHeaderFlagSize); got != want {
 			t.Fatalf("page hdr flags mismatch:\ngot=0x%x\nwant=0x%x", got, want)
 		}
 		if got, want := data, spec.Pages[i].Data; !bytes.Equal(got, want) {
@@ -298,9 +298,8 @@ func TestDecoder_64KBPageSize(t *testing.T) {
 		if !bytes.Equal(data, page1Data) {
 			t.Fatal("page 1 data mismatch")
 		}
-		// Should be compressed (flag without uncompressed bit).
-		if hdr.Flags != ltx.PageHeaderFlagCompressedSize {
-			t.Fatalf("expected compressed flag only, got 0x%x", hdr.Flags)
+		if hdr.Flags != ltx.PageHeaderFlagSize {
+			t.Fatalf("expected size flag, got 0x%x", hdr.Flags)
 		}
 
 		if err := dec.DecodePage(&hdr, data); err != nil {
@@ -372,10 +371,9 @@ func TestDecoder_64KBPageSize(t *testing.T) {
 		if !bytes.Equal(data, page1Data) {
 			t.Fatal("page 1 data mismatch")
 		}
-		// Should be stored uncompressed (random data doesn't compress).
-		expectedFlags := ltx.PageHeaderFlagCompressedSize | ltx.PageHeaderFlagUncompressed
-		if hdr.Flags != expectedFlags {
-			t.Fatalf("expected uncompressed flags 0x%x, got 0x%x", expectedFlags, hdr.Flags)
+		// Random data is still compressed (even if slightly larger).
+		if hdr.Flags != ltx.PageHeaderFlagSize {
+			t.Fatalf("expected size flag 0x%x, got 0x%x", ltx.PageHeaderFlagSize, hdr.Flags)
 		}
 
 		if err := dec.DecodePage(&hdr, data); err != io.EOF {
