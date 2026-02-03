@@ -120,6 +120,67 @@ func TestCompactor_Compact(t *testing.T) {
 			},
 		})
 	})
+	t.Run("HeaderTimestampOverride", func(t *testing.T) {
+		input0 := &ltx.FileSpec{
+			Header: ltx.Header{
+				Version:          ltx.Version,
+				PageSize:         512,
+				Commit:           1,
+				MinTXID:          2,
+				MaxTXID:          2,
+				Timestamp:        1000,
+				PreApplyChecksum: ltx.ChecksumFlag | 2,
+			},
+			Pages: []ltx.PageSpec{
+				{
+					Header: ltx.PageHeader{Pgno: 1},
+					Data:   bytes.Repeat([]byte{0x81}, 512),
+				},
+			},
+			Trailer: ltx.Trailer{
+				PostApplyChecksum: ltx.ChecksumFlag | 2,
+			},
+		}
+		input1 := &ltx.FileSpec{
+			Header: ltx.Header{
+				Version:          ltx.Version,
+				PageSize:         512,
+				Commit:           1,
+				MinTXID:          3,
+				MaxTXID:          3,
+				Timestamp:        2000,
+				PreApplyChecksum: ltx.ChecksumFlag | 3,
+			},
+			Pages: []ltx.PageSpec{
+				{
+					Header: ltx.PageHeader{Pgno: 1},
+					Data:   bytes.Repeat([]byte{0x91}, 512),
+				},
+			},
+			Trailer: ltx.Trailer{
+				PostApplyChecksum: ltx.ChecksumFlag | 3,
+			},
+		}
+		var buf0, buf1 bytes.Buffer
+		writeFileSpec(t, &buf0, input0)
+		writeFileSpec(t, &buf1, input1)
+
+		var output bytes.Buffer
+		c, err := ltx.NewCompactor(&output, []io.Reader{&buf0, &buf1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		timestamp := int64(1000)
+		c.HeaderTimestamp = &timestamp
+		if err := c.Compact(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+
+		spec := readFileSpec(t, &output)
+		if got, want := spec.Header.Timestamp, int64(1000); got != want {
+			t.Fatalf("Timestamp=%d, want %d", got, want)
+		}
+	})
 	t.Run("NonSnapshotPageDataOnly", func(t *testing.T) {
 		spec, err := compactFileSpecs(t,
 			&ltx.FileSpec{

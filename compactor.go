@@ -36,7 +36,8 @@ type Compactor struct {
 	total atomic.Uint32 // total pages (from last input's Commit)
 
 	// These flags will be set when encoding the header.
-	HeaderFlags uint32
+	HeaderFlags     uint32
+	HeaderTimestamp *int64
 
 	// If true, the compactor will not validate that input files have contiguous
 	// transaction IDs. This is false by default but can be enabled when
@@ -106,6 +107,10 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 	// Fetch the first and last headers from the sorted readers.
 	minHdr := c.inputs[0].dec.Header()
 	maxHdr := c.inputs[len(c.inputs)-1].dec.Header()
+	timestamp := maxHdr.Timestamp
+	if c.HeaderTimestamp != nil {
+		timestamp = *c.HeaderTimestamp
+	}
 
 	// Generate output header. Skip NodeID as it's not meaningful after compaction.
 	if err := c.enc.EncodeHeader(Header{
@@ -115,7 +120,7 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 		Commit:           maxHdr.Commit,
 		MinTXID:          minHdr.MinTXID,
 		MaxTXID:          maxHdr.MaxTXID,
-		Timestamp:        maxHdr.Timestamp,
+		Timestamp:        timestamp,
 		PreApplyChecksum: minHdr.PreApplyChecksum,
 	}); err != nil {
 		return fmt.Errorf("write header: %w", err)
