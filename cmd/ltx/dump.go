@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/superfly/ltx"
+	"github.com/superfly/ltx/internal"
 )
 
 // DumpCommand represents a command to print the contents of a single LTX file.
@@ -82,6 +83,8 @@ Arguments:
 		}
 
 		fmt.Printf("Frame #%d: pgno=%d\n", i, pageHeader.Pgno)
+		fmt.Print(internal.Hexdump(data))
+		fmt.Println()
 	}
 	fmt.Printf("\n")
 
