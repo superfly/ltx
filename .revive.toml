@@ -1,0 +1,56 @@
+ignoreGeneratedHeader = false
+severity = "warning"
+confidence = 0.8
+errorCode = 1
+warningCode = 0
+
+[rule.blank-imports]
+[rule.context-as-argument]
+[rule.context-keys-type]
+[rule.dot-imports]
+[rule.error-return]
+[rule.error-strings]
+[rule.error-naming]
+[rule.exported]
+[rule.if-return]
+[rule.increment-decrement]
+[rule.var-naming]
+[rule.var-declaration]
+[rule.package-comments]
+[rule.range]
+[rule.receiver-naming]
+[rule.time-naming]
+[rule.unexported-return]
+[rule.indent-error-flow]
+[rule.errorf]
+[rule.empty-block]
+[rule.superfluous-else]
+[rule.unused-parameter]
+[rule.unreachable-code]
+[rule.redefines-builtin-id]
+
+# Additional useful rules
+# Disabled cyclomatic and cognitive complexity
+# [rule.cognitive-complexity]
+#   arguments = [15]
+# [rule.cyclomatic]
+#   arguments = [10]
+
+# Disabled line length limit
+# [rule.line-length-limit]
+#   arguments = [120]
+
+[rule.function-result-limit]
+  arguments = [3]
+
+[rule.argument-limit]
+  arguments = [5]
+
+[rule.unnecessary-stmt]
+[rule.deep-exit]
+[rule.duplicated-imports]
+[rule.import-shadowing]
+[rule.bare-return]
+[rule.unused-receiver]
+[rule.unhandled-error]
+  arguments = ["fmt.Printf", "fmt.Println", "fmt.Print", "fmt.Fprintf"]

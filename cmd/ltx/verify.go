@@ -18,7 +18,7 @@ func NewVerifyCommand() *VerifyCommand {
 }
 
 // Run executes the command.
-func (c *VerifyCommand) Run(ctx context.Context, args []string) (ret error) {
+func (c *VerifyCommand) Run(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("ltx-verify", flag.ContinueOnError)
 	fs.Usage = func() {
 		fmt.Println(`
@@ -56,7 +56,7 @@ Usage:
 	return nil
 }
 
-func (c *VerifyCommand) verifyFile(_ context.Context, filename string) error {
+func (*VerifyCommand) verifyFile(_ context.Context, filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return err

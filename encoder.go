@@ -186,7 +186,7 @@ func (enc *Encoder) EncodeHeader(hdr Header) error {
 }
 
 // EncodePage writes hdr & data to the file's page block.
-func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
+func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) error {
 	if enc.state == stateClosed {
 		return ErrEncoderClosed
 	} else if enc.state != statePage {
@@ -289,6 +289,7 @@ func (enc *Encoder) writeToHash(b []byte) {
 	enc.n += int64(len(b))
 }
 
+// PageIndexElem represents an element in the page index.
 type PageIndexElem struct {
 	Level   int
 	MinTXID TXID
