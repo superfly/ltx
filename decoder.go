@@ -279,6 +279,11 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 		return err
 	}
 
+	// Encrypted files must use the size-prefixed block format.
+	if dec.encrypted && hdr.Flags&PageHeaderFlagSize == 0 {
+		return fmt.Errorf("encrypted file contains page without size flag (pgno=%d)", hdr.Pgno)
+	}
+
 	// Read page data using format-specific approach.
 	if hdr.Flags&PageHeaderFlagSize != 0 {
 		// New block format: read size prefix, then data.

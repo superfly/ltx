@@ -441,6 +441,56 @@ func TestDecoder_Encrypted(t *testing.T) {
 	})
 }
 
+func TestFileSpec_StripEncryptionWhenNoRecipients(t *testing.T) {
+	pub, priv, _ := ltx.GenerateKeyPair()
+
+	pageData := make([]byte, 1024)
+	pageData[0] = 0xAB
+
+	chksum := ltx.ChecksumFlag | ltx.ChecksumPage(1, pageData)
+
+	// Create encrypted file.
+	var encBuf bytes.Buffer
+	spec := ltx.FileSpec{
+		Header: ltx.Header{
+			Version: ltx.Version, PageSize: 1024, Commit: 1,
+			MinTXID: 1, MaxTXID: 1, Timestamp: 1000,
+		},
+		Pages:   []ltx.PageSpec{{Header: ltx.PageHeader{Pgno: 1}, Data: pageData}},
+		Trailer: ltx.Trailer{PostApplyChecksum: chksum},
+
+		RecipientPublicKeys: [][]byte{pub},
+	}
+	if _, err := spec.WriteTo(&encBuf); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read back with key.
+	var spec2 ltx.FileSpec
+	if _, err := spec2.ReadFromWithKey(bytes.NewReader(encBuf.Bytes()), priv); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write without recipients — should produce a valid unencrypted file.
+	spec2.RecipientPublicKeys = nil
+	var plainBuf bytes.Buffer
+	if _, err := spec2.WriteTo(&plainBuf); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the output is readable without a key.
+	var spec3 ltx.FileSpec
+	if _, err := spec3.ReadFrom(bytes.NewReader(plainBuf.Bytes())); err != nil {
+		t.Fatalf("expected unencrypted file to be readable without key: %v", err)
+	}
+	if spec3.Header.Encrypted() {
+		t.Fatal("expected header to not have encrypted flag")
+	}
+	if !bytes.Equal(spec3.Pages[0].Data, pageData) {
+		t.Fatal("page data mismatch")
+	}
+}
+
 func TestDecoder_64KBPageSize(t *testing.T) {
 	const pageSize = 65536 // 64KB - maximum SQLite page size
 

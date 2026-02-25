@@ -26,6 +26,15 @@ func (s *FileSpec) WriteTo(dst io.Writer) (n int64, err error) {
 		if err := enc.SetEncryption(s.RecipientPublicKeys); err != nil {
 			return 0, fmt.Errorf("set encryption: %s", err)
 		}
+	} else {
+		// Clear encryption header fields when no recipients are configured.
+		// This prevents writing a corrupt file when a previously-encrypted
+		// FileSpec is written without recipients (e.g. ltx rekey without -encrypt-to).
+		s.Header.Flags &^= HeaderFlagEncryptedHPKE
+		s.Header.RecipientCount = 0
+		s.Header.KEMID = 0
+		s.Header.KDFID = 0
+		s.Header.AEADID = 0
 	}
 
 	if err := enc.EncodeHeader(s.Header); err != nil {
