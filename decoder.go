@@ -32,6 +32,15 @@ type Decoder struct {
 	hash   hash.Hash64
 	pageN  int   // pages read
 	n      int64 // bytes read
+
+	// Encryption fields
+	encrypted      bool
+	privKey        []byte
+	cek            []byte
+	pageKey        []byte
+	indexKey       []byte
+	headerHash     [32]byte
+	recipientBlock *RecipientBlock
 }
 
 // NewDecoder returns a new instance of Decoder.
@@ -71,6 +80,12 @@ func (dec *Decoder) PageIndex() map[uint32]PageIndexElem {
 	return dec.pageIndex
 }
 
+// SetDecryptionKey sets the private key to use for decryption.
+// Must be called before DecodeHeader.
+func (dec *Decoder) SetDecryptionKey(privateKey []byte) {
+	dec.privKey = privateKey
+}
+
 // Close verifies the reader is at the end of the file and that the checksum matches.
 func (dec *Decoder) Close() error {
 	if dec.state == stateClosed {
@@ -84,25 +99,69 @@ func (dec *Decoder) Close() error {
 	if err != nil {
 		return fmt.Errorf("read all: %w", err)
 	}
-	remaining := bytes.NewReader(remainingBytes)
 
-	// Write everything but the file checksum to the hash.
-	dec.writeToHash(remainingBytes[:len(remainingBytes)-ChecksumSize])
+	if dec.encrypted {
+		// For encrypted files, remaining contains:
+		//   page_index || index_auth_tag(16) || duplicate_recipient_block || trailer(16)
+		// We need to hash everything except the file checksum (last 8 bytes).
+		dec.writeToHash(remainingBytes[:len(remainingBytes)-ChecksumSize])
 
-	// Read page index.
-	if dec.pageIndex, err = DecodePageIndex(remaining, 0, dec.header.MinTXID, dec.header.MaxTXID); err != nil {
-		return fmt.Errorf("read page index: %w", err)
+		// Parse the remaining data. We read from the end backwards:
+		// - Last 16 bytes: trailer
+		// - Before trailer: duplicate recipient block (RecipientCount * 80)
+		// - Before recipient block: index auth tag (16 bytes)
+		// - Rest: page index
+
+		r := bytes.NewReader(remainingBytes)
+
+		trailerStart := len(remainingBytes) - TrailerSize
+		dupRecipientSize := dec.header.RecipientBlockSize()
+		dupRecipientStart := trailerStart - dupRecipientSize
+		authTagStart := dupRecipientStart - AuthTagSize
+
+		if authTagStart < 0 {
+			return fmt.Errorf("encrypted file too short for index auth + recipient block + trailer")
+		}
+
+		// Read page index from the beginning to authTagStart.
+		indexBytes := remainingBytes[:authTagStart]
+		indexReader := bytes.NewReader(indexBytes)
+
+		if dec.pageIndex, err = DecodePageIndex(indexReader, 0, dec.header.MinTXID, dec.header.MaxTXID); err != nil {
+			return fmt.Errorf("read page index: %w", err)
+		}
+
+		// Verify index auth tag.
+		authTag := remainingBytes[authTagStart : authTagStart+AuthTagSize]
+		if err := VerifyIndexAuth(dec.indexKey, indexBytes, authTag); err != nil {
+			return err
+		}
+
+		// Read trailer (skip duplicate recipient block, already consumed by hash).
+		_ = r // used implicitly via remainingBytes
+		trailerBuf := remainingBytes[trailerStart:]
+		if err := dec.trailer.UnmarshalBinary(trailerBuf); err != nil {
+			return fmt.Errorf("unmarshal trailer: %w", err)
+		}
+	} else {
+		// Write everything but the file checksum to the hash.
+		dec.writeToHash(remainingBytes[:len(remainingBytes)-ChecksumSize])
+
+		remaining := bytes.NewReader(remainingBytes)
+
+		// Read page index.
+		if dec.pageIndex, err = DecodePageIndex(remaining, 0, dec.header.MinTXID, dec.header.MaxTXID); err != nil {
+			return fmt.Errorf("read page index: %w", err)
+		}
+
+		// Read trailer.
+		b := make([]byte, TrailerSize)
+		if _, err := io.ReadFull(remaining, b); err != nil {
+			return err
+		} else if err := dec.trailer.UnmarshalBinary(b); err != nil {
+			return fmt.Errorf("unmarshal trailer: %w", err)
+		}
 	}
-
-	// Read trailer.
-	b := make([]byte, TrailerSize)
-	if _, err := io.ReadFull(remaining, b); err != nil {
-		return err
-	} else if err := dec.trailer.UnmarshalBinary(b); err != nil {
-		return fmt.Errorf("unmarshal trailer: %w", err)
-	}
-
-	// TODO: Ensure last read page is equal to the commit for snapshot LTX files
 
 	// Compare file checksum with checksum in trailer.
 	if chksum := ChecksumFlag | Checksum(dec.hash.Sum64()); chksum != dec.trailer.FileChecksum {
@@ -144,6 +203,47 @@ func (dec *Decoder) DecodeHeader() error {
 		dec.chksum = ChecksumFlag
 	}
 
+	// Handle encryption.
+	if dec.header.Encrypted() {
+		if dec.privKey == nil {
+			return ErrDecryptionKeyRequired
+		}
+
+		dec.encrypted = true
+		dec.headerHash = HeaderHash(b)
+
+		// Read recipient block.
+		rbSize := dec.header.RecipientBlockSize()
+		rbBytes := make([]byte, rbSize)
+		if _, err := io.ReadFull(dec.r, rbBytes); err != nil {
+			return fmt.Errorf("read recipient block: %w", err)
+		}
+		dec.writeToHash(rbBytes)
+
+		var rb RecipientBlock
+		if err := rb.UnmarshalBinary(rbBytes, int(dec.header.RecipientCount)); err != nil {
+			return fmt.Errorf("unmarshal recipient block: %w", err)
+		}
+		dec.recipientBlock = &rb
+
+		// Open CEK.
+		cek, err := OpenCEK(&rb, dec.privKey)
+		if err != nil {
+			return fmt.Errorf("open CEK: %w", err)
+		}
+		dec.cek = cek
+
+		// Derive keys.
+		dec.pageKey, err = DerivePageKey(cek)
+		if err != nil {
+			return fmt.Errorf("derive page key: %w", err)
+		}
+		dec.indexKey, err = DeriveIndexKey(cek)
+		if err != nil {
+			return fmt.Errorf("derive index key: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -181,7 +281,7 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 
 	// Read page data using format-specific approach.
 	if hdr.Flags&PageHeaderFlagSize != 0 {
-		// New block format: read size prefix, then LZ4 block data.
+		// New block format: read size prefix, then data.
 		sizeBuf := make([]byte, 4)
 		if _, err := io.ReadFull(dec.r, sizeBuf); err != nil {
 			return fmt.Errorf("read data size: %w", err)
@@ -189,17 +289,35 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 		dec.writeToHash(sizeBuf)
 		dataSize := binary.BigEndian.Uint32(sizeBuf)
 
-		compressed := make([]byte, dataSize)
-		if _, err := io.ReadFull(dec.r, compressed); err != nil {
-			return fmt.Errorf("read compressed data: %w", err)
+		rawData := make([]byte, dataSize)
+		if _, err := io.ReadFull(dec.r, rawData); err != nil {
+			return fmt.Errorf("read data: %w", err)
 		}
-		if _, err := lz4.UncompressBlock(compressed, data); err != nil {
-			return fmt.Errorf("decompress block: %w", err)
+
+		if dec.encrypted {
+			// Hash the encrypted data (what's on disk).
+			_, _ = dec.hash.Write(rawData)
+			dec.n += int64(len(rawData))
+
+			// Decrypt.
+			aad := BuildPageAAD(dec.headerHash, hdr.Pgno, b)
+			compressed, err := DecryptPage(dec.pageKey, rawData, aad)
+			if err != nil {
+				return fmt.Errorf("decrypt page %d: %w", hdr.Pgno, err)
+			}
+
+			// Decompress.
+			if _, err := lz4.UncompressBlock(compressed, data); err != nil {
+				return fmt.Errorf("decompress block: %w", err)
+			}
+		} else {
+			// Hash and decompress unencrypted data.
+			if _, err := lz4.UncompressBlock(rawData, data); err != nil {
+				return fmt.Errorf("decompress block: %w", err)
+			}
 		}
 	} else {
 		// Old format: use LimitedReader workaround for lz4 frame concatenation.
-		// The lz4 library peeks ahead after EOF to check for concatenated frames,
-		// so we limit reads to prevent it from reading into the next page header.
 		dec.lr.R = dec.r
 		dec.lr.N = math.MaxInt64
 		dec.zr.Reset(&dec.lr)
@@ -215,7 +333,9 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 		}
 	}
 
-	dec.writeToHash(data)
+	if !dec.encrypted {
+		dec.writeToHash(data)
+	}
 	dec.pageN++
 
 	// Calculate checksum while decoding snapshots if tracking checksums.

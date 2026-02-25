@@ -1,6 +1,7 @@
 package ltx
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"hash"
@@ -29,6 +30,15 @@ type Encoder struct {
 	// Track how many of each write has occurred to move state.
 	prevPgno     uint32
 	pagesWritten uint32
+
+	// Encryption fields
+	encrypted      bool
+	recipientKeys  [][]byte
+	cek            []byte
+	pageKey        []byte
+	indexKey       []byte
+	headerHash     [32]byte
+	recipientBlock *RecipientBlock
 }
 
 // NewEncoder returns a new instance of Encoder.
@@ -64,6 +74,45 @@ func (enc *Encoder) SetPostApplyChecksum(chksum Checksum) {
 	enc.trailer.PostApplyChecksum = chksum
 }
 
+// SetEncryption configures the encoder to encrypt pages for the given recipients.
+// Must call before EncodeHeader.
+func (enc *Encoder) SetEncryption(recipientPublicKeys [][]byte) error {
+	if enc.state != stateHeader {
+		return fmt.Errorf("SetEncryption must be called before EncodeHeader")
+	}
+	if len(recipientPublicKeys) == 0 {
+		return fmt.Errorf("at least one recipient public key required")
+	}
+
+	cek, err := GenerateCEK()
+	if err != nil {
+		return fmt.Errorf("generate CEK: %w", err)
+	}
+
+	pageKey, err := DerivePageKey(cek)
+	if err != nil {
+		return fmt.Errorf("derive page key: %w", err)
+	}
+
+	indexKey, err := DeriveIndexKey(cek)
+	if err != nil {
+		return fmt.Errorf("derive index key: %w", err)
+	}
+
+	rb, err := SealCEK(cek, recipientPublicKeys)
+	if err != nil {
+		return fmt.Errorf("seal CEK: %w", err)
+	}
+
+	enc.encrypted = true
+	enc.recipientKeys = recipientPublicKeys
+	enc.cek = cek
+	enc.pageKey = pageKey
+	enc.indexKey = indexKey
+	enc.recipientBlock = rb
+	return nil
+}
+
 // Close flushes the checksum to the header.
 func (enc *Encoder) Close() error {
 	if enc.state == stateClosed {
@@ -81,8 +130,30 @@ func (enc *Encoder) Close() error {
 	}
 
 	// Write index to file.
-	if err := enc.encodePageIndex(); err != nil {
+	indexBytes, err := enc.encodePageIndex()
+	if err != nil {
 		return fmt.Errorf("write page index: %w", err)
+	}
+
+	if enc.encrypted {
+
+		// Write index auth tag.
+		tag, err := AuthenticateIndex(enc.indexKey, indexBytes)
+		if err != nil {
+			return fmt.Errorf("authenticate index: %w", err)
+		}
+		if _, err := enc.write(tag); err != nil {
+			return fmt.Errorf("write index auth tag: %w", err)
+		}
+
+		// Write duplicate recipient block.
+		rbBytes, err := enc.recipientBlock.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("marshal duplicate recipient block: %w", err)
+		}
+		if _, err := enc.write(rbBytes); err != nil {
+			return fmt.Errorf("write duplicate recipient block: %w", err)
+		}
 	}
 
 	// Marshal trailer to bytes.
@@ -117,8 +188,9 @@ func (enc *Encoder) Close() error {
 	return nil
 }
 
-func (enc *Encoder) encodePageIndex() error {
-	offset := enc.n
+func (enc *Encoder) encodePageIndex() ([]byte, error) {
+	// Build the index into a buffer so we can capture the bytes for auth.
+	var indexBuf bytes.Buffer
 
 	// Write elements in sorted page number order.
 	pgnos := make([]uint32, 0, len(enc.index))
@@ -136,24 +208,26 @@ func (enc *Encoder) encodePageIndex() error {
 		buf = binary.AppendUvarint(buf, uint64(elem.Offset))
 		buf = binary.AppendUvarint(buf, uint64(elem.Size))
 
-		if _, err := enc.write(buf); err != nil {
-			return fmt.Errorf("write page index element: %w", err)
-		}
+		indexBuf.Write(buf)
 	}
 
 	// Write end marker.
 	buf = binary.AppendUvarint(buf[:0], uint64(0))
-	if _, err := enc.write(buf); err != nil {
-		return fmt.Errorf("write page index pgno: %w", err)
-	}
+	indexBuf.Write(buf)
 
 	// Write size of page index.
-	buf = binary.BigEndian.AppendUint64(buf[:0], uint64(enc.n-offset))
-	if _, err := enc.write(buf); err != nil {
-		return fmt.Errorf("write page index size: %w", err)
+	indexDataLen := int64(indexBuf.Len())
+	buf = binary.BigEndian.AppendUint64(buf[:0], uint64(indexDataLen))
+	indexBuf.Write(buf)
+
+	indexBytes := indexBuf.Bytes()
+
+	// Write index bytes to the file writer.
+	if _, err := enc.write(indexBytes); err != nil {
+		return nil, fmt.Errorf("write page index: %w", err)
 	}
 
-	return nil
+	return indexBytes, nil
 }
 
 // EncodeHeader writes hdr to the file's header block.
@@ -162,7 +236,19 @@ func (enc *Encoder) EncodeHeader(hdr Header) error {
 		return ErrEncoderClosed
 	} else if enc.state != stateHeader {
 		return fmt.Errorf("cannot encode header frame, expected %s", enc.state)
-	} else if err := hdr.Validate(); err != nil {
+	}
+
+	// Apply encryption settings to header if encryption is configured.
+	if enc.encrypted {
+		hdr.Version = Version
+		hdr.Flags |= HeaderFlagEncryptedHPKE
+		hdr.RecipientCount = uint16(len(enc.recipientKeys))
+		hdr.KEMID = KEMX25519
+		hdr.KDFID = KDFSHA256
+		hdr.AEADID = AEADChaCha
+	}
+
+	if err := hdr.Validate(); err != nil {
 		return err
 	}
 
@@ -177,6 +263,20 @@ func (enc *Encoder) EncodeHeader(hdr Header) error {
 		return fmt.Errorf("marshal header: %w", err)
 	} else if _, err := enc.write(b); err != nil {
 		return fmt.Errorf("write header: %w", err)
+	}
+
+	// Compute header hash for AAD binding.
+	if enc.encrypted {
+		enc.headerHash = HeaderHash(b)
+
+		// Write recipient block after header.
+		rbBytes, err := enc.recipientBlock.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("marshal recipient block: %w", err)
+		}
+		if _, err := enc.write(rbBytes); err != nil {
+			return fmt.Errorf("write recipient block: %w", err)
+		}
 	}
 
 	// Move writer state to write page headers.
@@ -243,7 +343,7 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 	// Set flag indicating size field follows the page header (block format).
 	hdr.Flags |= PageHeaderFlagSize
 
-	writeData := enc.compressBuf[:n]
+	compressed := enc.compressBuf[:n]
 
 	// Write page header.
 	b, err := hdr.MarshalBinary()
@@ -253,19 +353,48 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 		return fmt.Errorf("write page header: %w", err)
 	}
 
-	// Write data size (4 bytes, big-endian).
-	sizeBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(sizeBuf, uint32(len(writeData)))
-	if _, err := enc.write(sizeBuf); err != nil {
-		return fmt.Errorf("write data size: %w", err)
-	}
+	if enc.encrypted {
+		// Build AAD: header_hash(32) || pgno(4) || page_header_bytes(6)
+		aad := BuildPageAAD(enc.headerHash, hdr.Pgno, b)
 
-	// Write page data (compressed or uncompressed).
-	if _, err := enc.w.Write(writeData); err != nil {
-		return fmt.Errorf("write page data: %w", err)
+		// Encrypt compressed data.
+		encrypted, err := EncryptPage(enc.pageKey, compressed, aad)
+		if err != nil {
+			return fmt.Errorf("encrypt page: %w", err)
+		}
+
+		// Write encrypted data size.
+		sizeBuf := make([]byte, 4)
+		binary.BigEndian.PutUint32(sizeBuf, uint32(len(encrypted)))
+		if _, err := enc.write(sizeBuf); err != nil {
+			return fmt.Errorf("write data size: %w", err)
+		}
+
+		// Write encrypted data — hash the encrypted bytes (what goes to disk).
+		if _, err := enc.w.Write(encrypted); err != nil {
+			return fmt.Errorf("write encrypted page data: %w", err)
+		}
+		_, _ = enc.hash.Write(encrypted)
+		enc.n += int64(len(encrypted))
+
+		// Also hash the uncompressed data for CRC64 rolling checksum.
+		// The enc.hash already includes the encrypted bytes for file checksum.
+		// But we DON'T hash uncompressed data into the file checksum — that's separate.
+	} else {
+		// Write data size (4 bytes, big-endian).
+		sizeBuf := make([]byte, 4)
+		binary.BigEndian.PutUint32(sizeBuf, uint32(len(compressed)))
+		if _, err := enc.write(sizeBuf); err != nil {
+			return fmt.Errorf("write data size: %w", err)
+		}
+
+		// Write page data.
+		if _, err := enc.w.Write(compressed); err != nil {
+			return fmt.Errorf("write page data: %w", err)
+		}
+		_, _ = enc.hash.Write(data) // hash the uncompressed data
+		enc.n += int64(len(compressed))
 	}
-	_, _ = enc.hash.Write(data) // hash the uncompressed data
-	enc.n += int64(len(writeData))
 
 	enc.pagesWritten++
 	enc.prevPgno = hdr.Pgno

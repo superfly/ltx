@@ -251,6 +251,196 @@ func TestDecoder_DecodeDatabaseTo(t *testing.T) {
 	})
 }
 
+func TestDecoder_Encrypted(t *testing.T) {
+	t.Run("RoundTrip", func(t *testing.T) {
+		pub, priv, err := ltx.GenerateKeyPair()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		page1Data := bytes.Repeat([]byte("x"), 1024)
+		page2Data := bytes.Repeat([]byte("y"), 1024)
+
+		chksum := ltx.ChecksumFlag
+		chksum = ltx.ChecksumFlag | (chksum ^ ltx.ChecksumPage(1, page1Data))
+		chksum = ltx.ChecksumFlag | (chksum ^ ltx.ChecksumPage(2, page2Data))
+
+		var buf bytes.Buffer
+		enc, err := ltx.NewEncoder(&buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.SetEncryption([][]byte{pub}); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodeHeader(ltx.Header{
+			Version:   ltx.Version,
+			PageSize:  1024,
+			Commit:    2,
+			MinTXID:   1,
+			MaxTXID:   1,
+			Timestamp: 1000,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodePage(ltx.PageHeader{Pgno: 1}, page1Data); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodePage(ltx.PageHeader{Pgno: 2}, page2Data); err != nil {
+			t.Fatal(err)
+		}
+		enc.SetPostApplyChecksum(chksum)
+		if err := enc.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		// Verify header has encryption flag.
+		hdr := enc.Header()
+		if !hdr.Encrypted() {
+			t.Fatal("expected encrypted flag")
+		}
+		if hdr.RecipientCount != 1 {
+			t.Fatalf("recipient count=%d, want 1", hdr.RecipientCount)
+		}
+
+		// Decode.
+		dec := ltx.NewDecoder(&buf)
+		dec.SetDecryptionKey(priv)
+		if err := dec.DecodeHeader(); err != nil {
+			t.Fatal(err)
+		}
+
+		var pageHdr ltx.PageHeader
+		data := make([]byte, 1024)
+
+		if err := dec.DecodePage(&pageHdr, data); err != nil {
+			t.Fatal(err)
+		}
+		if pageHdr.Pgno != 1 {
+			t.Fatalf("pgno=%d, want 1", pageHdr.Pgno)
+		}
+		if !bytes.Equal(data, page1Data) {
+			t.Fatal("page 1 data mismatch")
+		}
+
+		if err := dec.DecodePage(&pageHdr, data); err != nil {
+			t.Fatal(err)
+		}
+		if pageHdr.Pgno != 2 {
+			t.Fatalf("pgno=%d, want 2", pageHdr.Pgno)
+		}
+		if !bytes.Equal(data, page2Data) {
+			t.Fatal("page 2 data mismatch")
+		}
+
+		if err := dec.DecodePage(&pageHdr, data); err != io.EOF {
+			t.Fatalf("expected EOF, got %v", err)
+		}
+		if err := dec.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("MultiRecipient", func(t *testing.T) {
+		pub1, priv1, _ := ltx.GenerateKeyPair()
+		pub2, priv2, _ := ltx.GenerateKeyPair()
+
+		page1Data := bytes.Repeat([]byte("a"), 1024)
+		chksum := ltx.ChecksumFlag | ltx.ChecksumPage(1, page1Data)
+
+		var buf bytes.Buffer
+		enc, err := ltx.NewEncoder(&buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.SetEncryption([][]byte{pub1, pub2}); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodeHeader(ltx.Header{
+			Version: ltx.Version, PageSize: 1024, Commit: 1,
+			MinTXID: 1, MaxTXID: 1, Timestamp: 1000,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodePage(ltx.PageHeader{Pgno: 1}, page1Data); err != nil {
+			t.Fatal(err)
+		}
+		enc.SetPostApplyChecksum(chksum)
+		if err := enc.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		encoded := buf.Bytes()
+
+		// Both keys should decrypt.
+		for i, priv := range [][]byte{priv1, priv2} {
+			dec := ltx.NewDecoder(bytes.NewReader(encoded))
+			dec.SetDecryptionKey(priv)
+			if err := dec.DecodeHeader(); err != nil {
+				t.Fatalf("recipient %d: decode header: %v", i, err)
+			}
+
+			var hdr ltx.PageHeader
+			data := make([]byte, 1024)
+			if err := dec.DecodePage(&hdr, data); err != nil {
+				t.Fatalf("recipient %d: decode page: %v", i, err)
+			}
+			if !bytes.Equal(data, page1Data) {
+				t.Fatalf("recipient %d: data mismatch", i)
+			}
+
+			if err := dec.DecodePage(&hdr, data); err != io.EOF {
+				t.Fatalf("recipient %d: expected EOF", i)
+			}
+			if err := dec.Close(); err != nil {
+				t.Fatalf("recipient %d: close: %v", i, err)
+			}
+		}
+	})
+
+	t.Run("NoKeyForEncryptedFile", func(t *testing.T) {
+		pub, _, _ := ltx.GenerateKeyPair()
+
+		var buf bytes.Buffer
+		enc, _ := ltx.NewEncoder(&buf)
+		_ = enc.SetEncryption([][]byte{pub})
+		_ = enc.EncodeHeader(ltx.Header{
+			Version: ltx.Version, PageSize: 1024, Commit: 1,
+			MinTXID: 1, MaxTXID: 1, Timestamp: 1000,
+		})
+		_ = enc.EncodePage(ltx.PageHeader{Pgno: 1}, make([]byte, 1024))
+		enc.SetPostApplyChecksum(ltx.ChecksumFlag)
+		_ = enc.Close()
+
+		dec := ltx.NewDecoder(&buf)
+		if err := dec.DecodeHeader(); err != ltx.ErrDecryptionKeyRequired {
+			t.Fatalf("expected ErrDecryptionKeyRequired, got: %v", err)
+		}
+	})
+
+	t.Run("WrongKeyForEncryptedFile", func(t *testing.T) {
+		pub, _, _ := ltx.GenerateKeyPair()
+		_, wrongPriv, _ := ltx.GenerateKeyPair()
+
+		var buf bytes.Buffer
+		enc, _ := ltx.NewEncoder(&buf)
+		_ = enc.SetEncryption([][]byte{pub})
+		_ = enc.EncodeHeader(ltx.Header{
+			Version: ltx.Version, PageSize: 1024, Commit: 1,
+			MinTXID: 1, MaxTXID: 1, Timestamp: 1000,
+		})
+		_ = enc.EncodePage(ltx.PageHeader{Pgno: 1}, make([]byte, 1024))
+		enc.SetPostApplyChecksum(ltx.ChecksumFlag)
+		_ = enc.Close()
+
+		dec := ltx.NewDecoder(&buf)
+		dec.SetDecryptionKey(wrongPriv)
+		if err := dec.DecodeHeader(); err == nil {
+			t.Fatal("expected error with wrong key")
+		}
+	})
+}
+
 func TestDecoder_64KBPageSize(t *testing.T) {
 	const pageSize = 65536 // 64KB - maximum SQLite page size
 

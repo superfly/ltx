@@ -42,6 +42,13 @@ type Compactor struct {
 	// transaction IDs. This is false by default but can be enabled when
 	// rebuilding snapshots with missing transactions.
 	AllowNonContiguousTXIDs bool
+
+	// DecryptionKey is the private key used to decrypt input files.
+	DecryptionKey []byte
+
+	// OutputEncryption is the set of recipient public keys for the output file.
+	// If set, the output will be encrypted. If nil, the output will be unencrypted.
+	OutputEncryption [][]byte
 }
 
 // NewCompactor returns a new instance of Compactor with default settings.
@@ -78,6 +85,20 @@ func (c *Compactor) Status() CompactorStatus {
 func (c *Compactor) Compact(ctx context.Context) error {
 	if len(c.inputs) == 0 {
 		return fmt.Errorf("at least one input reader required")
+	}
+
+	// Set decryption key on all input decoders.
+	if c.DecryptionKey != nil {
+		for _, input := range c.inputs {
+			input.dec.SetDecryptionKey(c.DecryptionKey)
+		}
+	}
+
+	// Set encryption on output encoder.
+	if len(c.OutputEncryption) > 0 {
+		if err := c.enc.SetEncryption(c.OutputEncryption); err != nil {
+			return fmt.Errorf("set output encryption: %w", err)
+		}
 	}
 
 	// Read headers from all inputs.

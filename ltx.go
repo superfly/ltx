@@ -17,10 +17,16 @@ import (
 
 const (
 	// Magic is the first 4 bytes of every LTX file.
-	Magic = "LTX1"
+	Magic = "LTX4"
+
+	// MagicV1 is the magic string for LTX format version 3 (original).
+	MagicV1 = "LTX1"
 
 	// Version is the current version of the LTX file format.
-	Version = 3
+	Version = 4
+
+	// Version3 is the previous version of the LTX file format.
+	Version3 = 3
 )
 
 // Size constants.
@@ -170,9 +176,21 @@ func (t *TXID) UnmarshalJSON(data []byte) (err error) {
 
 // Header flags.
 const (
-	HeaderFlagMask = uint32(HeaderFlagNoChecksum)
+	HeaderFlagMask = uint32(HeaderFlagNoChecksum | HeaderFlagEncryptedHPKE)
 
-	HeaderFlagNoChecksum = uint32(1 << 1)
+	HeaderFlagNoChecksum     = uint32(1 << 1)
+	HeaderFlagEncryptedHPKE  = uint32(1 << 2)
+)
+
+// Encryption constants.
+const (
+	RecipientEntrySize = 80 // enc(32) + encrypted_cek(32) + auth_tag(16)
+	NonceSize          = 12
+	AuthTagSize        = 16
+
+	KEMX25519  = uint16(0x0020)
+	KDFSHA256  = uint16(0x0001)
+	AEADChaCha = uint16(0x0003)
 )
 
 // Header represents the header frame of an LTX file.
@@ -190,6 +208,11 @@ type Header struct {
 	WALSalt1         uint32   // header salt-1 from original WAL; zero if journal or compaction
 	WALSalt2         uint32   // header salt-2 from original WAL; zero if journal or compaction
 	NodeID           uint64   // node id where the LTX file was created, zero if unset
+
+	RecipientCount uint16 // number of recipients (0 if unencrypted)
+	KEMID          uint16 // HPKE KEM identifier
+	KDFID          uint16 // HPKE KDF identifier
+	AEADID         uint16 // HPKE AEAD identifier
 }
 
 // IsSnapshot returns true if header represents a complete database snapshot.
@@ -204,13 +227,40 @@ func (h *Header) LockPgno() uint32 {
 	return LockPgno(h.PageSize)
 }
 
+// Encrypted returns true if the header has the encrypted HPKE flag set.
+func (h Header) Encrypted() bool {
+	return h.Flags&HeaderFlagEncryptedHPKE != 0
+}
+
+// RecipientBlockSize returns the total size of the recipient block in bytes.
+func (h Header) RecipientBlockSize() int {
+	return int(h.RecipientCount) * RecipientEntrySize
+}
+
 // Validate returns an error if h is invalid.
 func (h *Header) Validate() error {
-	if h.Version != Version {
+	if h.Version != Version && h.Version != Version3 {
 		return fmt.Errorf("invalid version")
 	}
 	if !IsValidHeaderFlags(h.Flags) {
 		return fmt.Errorf("invalid flags: 0x%08x", h.Flags)
+	}
+	if h.Encrypted() {
+		if h.Version != Version {
+			return fmt.Errorf("encryption requires version %d", Version)
+		}
+		if h.RecipientCount == 0 {
+			return fmt.Errorf("recipient count required for encrypted files")
+		}
+		if h.KEMID != KEMX25519 {
+			return fmt.Errorf("unsupported KEM: 0x%04x", h.KEMID)
+		}
+		if h.KDFID != KDFSHA256 {
+			return fmt.Errorf("unsupported KDF: 0x%04x", h.KDFID)
+		}
+		if h.AEADID != AEADChaCha {
+			return fmt.Errorf("unsupported AEAD: 0x%04x", h.AEADID)
+		}
 	}
 	if !IsValidPageSize(h.PageSize) {
 		return fmt.Errorf("invalid page size: %d", h.PageSize)
@@ -282,7 +332,13 @@ func (h Header) PreApplyPos() Pos {
 // MarshalBinary encodes h to a byte slice.
 func (h *Header) MarshalBinary() ([]byte, error) {
 	b := make([]byte, HeaderSize)
-	copy(b[0:4], Magic)
+
+	if h.Version == Version3 {
+		copy(b[0:4], MagicV1)
+	} else {
+		copy(b[0:4], Magic)
+	}
+
 	binary.BigEndian.PutUint32(b[4:], h.Flags)
 	binary.BigEndian.PutUint32(b[8:], h.PageSize)
 	binary.BigEndian.PutUint32(b[12:], h.Commit)
@@ -295,6 +351,12 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	binary.BigEndian.PutUint32(b[64:], h.WALSalt1)
 	binary.BigEndian.PutUint32(b[68:], h.WALSalt2)
 	binary.BigEndian.PutUint64(b[72:], h.NodeID)
+
+	binary.BigEndian.PutUint16(b[80:], h.RecipientCount)
+	binary.BigEndian.PutUint16(b[82:], h.KEMID)
+	binary.BigEndian.PutUint16(b[84:], h.KDFID)
+	binary.BigEndian.PutUint16(b[86:], h.AEADID)
+
 	return b, nil
 }
 
@@ -302,6 +364,15 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 func (h *Header) UnmarshalBinary(b []byte) error {
 	if len(b) < HeaderSize {
 		return io.ErrShortBuffer
+	}
+
+	switch string(b[0:4]) {
+	case Magic:
+		h.Version = Version
+	case MagicV1:
+		h.Version = Version3
+	default:
+		return ErrInvalidFile
 	}
 
 	h.Flags = binary.BigEndian.Uint32(b[4:])
@@ -317,10 +388,12 @@ func (h *Header) UnmarshalBinary(b []byte) error {
 	h.WALSalt2 = binary.BigEndian.Uint32(b[68:])
 	h.NodeID = binary.BigEndian.Uint64(b[72:])
 
-	if string(b[0:4]) != Magic {
-		return ErrInvalidFile
+	if h.Version == Version {
+		h.RecipientCount = binary.BigEndian.Uint16(b[80:])
+		h.KEMID = binary.BigEndian.Uint16(b[82:])
+		h.KDFID = binary.BigEndian.Uint16(b[84:])
+		h.AEADID = binary.BigEndian.Uint16(b[86:])
 	}
-	h.Version = Version
 
 	return nil
 }
