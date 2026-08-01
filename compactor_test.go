@@ -3,6 +3,7 @@ package ltx_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"testing"
 
@@ -251,6 +252,20 @@ func TestCompactor_Compact(t *testing.T) {
 		}
 		if err := c.Compact(context.Background()); err == nil || err.Error() != `at least one input reader required` {
 			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+	t.Run("ErrDecodeHeader", func(t *testing.T) {
+		c, err := ltx.NewCompactor(io.Discard, []io.Reader{bytes.NewReader(nil)})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = c.Compact(context.Background())
+		if err == nil || err.Error() != `decode header for input 0: EOF` {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !errors.Is(err, io.EOF) {
+			t.Fatalf("expected EOF, got: %v", err)
 		}
 	})
 	t.Run("ErrPageSizeMismatch", func(t *testing.T) {
