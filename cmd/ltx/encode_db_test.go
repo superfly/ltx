@@ -47,6 +47,46 @@ func TestEncodeDBCommand(t *testing.T) {
 		}
 	})
 
+	t.Run("NewOutputMode", func(t *testing.T) {
+		dir := t.TempDir()
+		dbPath := filepath.Join(dir, "db")
+		writeSQLiteDatabase(t, dbPath)
+
+		outPath := filepath.Join(dir, "ltx")
+		if err := NewEncodeDBCommand().Run(context.Background(), []string{"-o", outPath, dbPath}); err != nil {
+			t.Fatal(err)
+		}
+
+		if info, err := os.Stat(outPath); err != nil {
+			t.Fatal(err)
+		} else if got := info.Mode().Perm(); got&0o077 != 0 {
+			t.Fatalf("mode=%#o, want no group or world permissions", got)
+		}
+	})
+
+	t.Run("ExistingOutputMode", func(t *testing.T) {
+		dir := t.TempDir()
+		dbPath := filepath.Join(dir, "db")
+		writeSQLiteDatabase(t, dbPath)
+
+		outPath := filepath.Join(dir, "ltx")
+		if err := os.WriteFile(outPath, nil, 0o600); err != nil {
+			t.Fatal(err)
+		} else if err := os.Chmod(outPath, 0o640); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := NewEncodeDBCommand().Run(context.Background(), []string{"-o", outPath, dbPath}); err != nil {
+			t.Fatal(err)
+		}
+
+		if info, err := os.Stat(outPath); err != nil {
+			t.Fatal(err)
+		} else if got, want := info.Mode().Perm(), os.FileMode(0o640); got != want {
+			t.Fatalf("mode=%#o, want %#o", got, want)
+		}
+	})
+
 	t.Run("ErrSameFile", func(t *testing.T) {
 		for _, tt := range []struct {
 			name  string

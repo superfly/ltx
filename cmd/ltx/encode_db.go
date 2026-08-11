@@ -65,12 +65,14 @@ Arguments:
 	if err != nil {
 		return fmt.Errorf("stat DB file: %w", err)
 	}
-	outMode := os.FileMode(0o644)
+	var outMode os.FileMode
+	var preserveOutMode bool
 	if outInfo, err := os.Stat(*outPath); err == nil {
 		if os.SameFile(dbInfo, outInfo) {
 			return fmt.Errorf("input and output files are the same")
 		}
 		outMode = outInfo.Mode().Perm()
+		preserveOutMode = true
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("stat output file: %w", err)
 	}
@@ -93,8 +95,10 @@ Arguments:
 			_ = os.Remove(tmpPath)
 		}
 	}()
-	if err := out.Chmod(outMode); err != nil {
-		return fmt.Errorf("chmod temporary output file: %w", err)
+	if preserveOutMode {
+		if err := out.Chmod(outMode); err != nil {
+			return fmt.Errorf("chmod temporary output file: %w", err)
+		}
 	}
 
 	var postApplyChecksum ltx.Checksum
