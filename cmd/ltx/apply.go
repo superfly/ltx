@@ -78,20 +78,23 @@ func (c *ApplyCommand) applyLTXFile(_ context.Context, dbFile *os.File, filename
 	if err := dec.DecodeHeader(); err != nil {
 		return fmt.Errorf("decode ltx header: %w", err)
 	}
+	hdr := dec.Header()
 
 	// Read checksum before applying.
-	if _, err := dbFile.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	preApplyChecksum, err := ltx.ChecksumReader(dbFile, int(dec.Header().PageSize))
-	if err != nil {
-		return fmt.Errorf("compute pre-apply checksum: %w", err)
-	} else if preApplyChecksum != dec.Header().PreApplyChecksum {
-		return fmt.Errorf("pre-apply checksum mismatch: %s <> %s", preApplyChecksum, dec.Header().PreApplyChecksum)
+	if !hdr.IsSnapshot() && !hdr.NoChecksum() {
+		if _, err := dbFile.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+		preApplyChecksum, err := ltx.ChecksumReader(dbFile, int(hdr.PageSize))
+		if err != nil {
+			return fmt.Errorf("compute pre-apply checksum: %w", err)
+		} else if preApplyChecksum != hdr.PreApplyChecksum {
+			return fmt.Errorf("pre-apply checksum mismatch: %s <> %s", preApplyChecksum, hdr.PreApplyChecksum)
+		}
 	}
 
 	// Apply each page to the database.
-	data := make([]byte, dec.Header().PageSize)
+	data := make([]byte, hdr.PageSize)
 	for {
 		var pageHeader ltx.PageHeader
 		if err := dec.DecodePage(&pageHeader, data); err == io.EOF {
@@ -100,7 +103,7 @@ func (c *ApplyCommand) applyLTXFile(_ context.Context, dbFile *os.File, filename
 			return fmt.Errorf("decode ltx page: %w", err)
 		}
 
-		offset := int64(pageHeader.Pgno-1) * int64(dec.Header().PageSize)
+		offset := int64(pageHeader.Pgno-1) * int64(hdr.PageSize)
 		if _, err := dbFile.WriteAt(data, offset); err != nil {
 			return fmt.Errorf("write database page: %w", err)
 		}
@@ -110,16 +113,21 @@ func (c *ApplyCommand) applyLTXFile(_ context.Context, dbFile *os.File, filename
 	if err := dec.Close(); err != nil {
 		return fmt.Errorf("close ltx file: %w", err)
 	}
+	if err := dbFile.Truncate(int64(hdr.Commit) * int64(hdr.PageSize)); err != nil {
+		return fmt.Errorf("truncate database: %w", err)
+	}
 
 	// Recalculate database checksum and ensure it matches the LTX checksum.
-	if _, err := dbFile.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	postApplyChecksum, err := ltx.ChecksumReader(dbFile, int(dec.Header().PageSize))
-	if err != nil {
-		return fmt.Errorf("compute post-apply checksum: %w", err)
-	} else if postApplyChecksum != dec.Trailer().PostApplyChecksum {
-		return fmt.Errorf("post-apply checksum mismatch: %s <> %s", postApplyChecksum, dec.Trailer().PostApplyChecksum)
+	if !hdr.NoChecksum() {
+		if _, err := dbFile.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+		postApplyChecksum, err := ltx.ChecksumReader(dbFile, int(hdr.PageSize))
+		if err != nil {
+			return fmt.Errorf("compute post-apply checksum: %w", err)
+		} else if postApplyChecksum != dec.Trailer().PostApplyChecksum {
+			return fmt.Errorf("post-apply checksum mismatch: %s <> %s", postApplyChecksum, dec.Trailer().PostApplyChecksum)
+		}
 	}
 
 	return nil
