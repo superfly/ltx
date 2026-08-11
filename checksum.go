@@ -78,6 +78,7 @@ func checksumPagesSerial(dbPath string, firstPage, lastPage uint32, pageSize int
 	if err != nil {
 		return firstPage - 1, err
 	}
+	defer func() { _ = f.Close() }()
 
 	_, err = f.Seek(int64(firstPage-1)*pageSize, io.SeekStart)
 	if err != nil {
