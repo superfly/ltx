@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/superfly/ltx"
@@ -59,26 +61,49 @@ Arguments:
 	}
 	defer func() { _ = db.Close() }()
 
-	out, err := os.OpenFile(*outPath, os.O_CREATE|os.O_WRONLY, 0o644)
+	dbInfo, err := db.Stat()
 	if err != nil {
-		return fmt.Errorf("open output file: %w", err)
+		return fmt.Errorf("stat DB file: %w", err)
 	}
-	defer func() { _ = out.Close() }()
+	outMode := os.FileMode(0o644)
+	if outInfo, err := os.Stat(*outPath); err == nil {
+		if os.SameFile(dbInfo, outInfo) {
+			return fmt.Errorf("input and output files are the same")
+		}
+		outMode = outInfo.Mode().Perm()
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat output file: %w", err)
+	}
 
 	rd, hdr, err := c.readSQLiteDatabaseHeader(db)
 	if err != nil {
 		return fmt.Errorf("read database header: %w", err)
 	}
 
-	var flags uint32
+	out, err := os.CreateTemp(filepath.Dir(*outPath), "."+filepath.Base(*outPath)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temporary output file: %w", err)
+	}
+	tmpPath := out.Name()
+	defer func() {
+		if out != nil {
+			_ = out.Close()
+		}
+		if tmpPath != "" {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if err := out.Chmod(outMode); err != nil {
+		return fmt.Errorf("chmod temporary output file: %w", err)
+	}
+
 	var postApplyChecksum ltx.Checksum
 	enc, err := ltx.NewEncoder(out)
 	if err != nil {
 		return fmt.Errorf("create ltx encoder: %w", err)
 	}
 	if err := enc.EncodeHeader(ltx.Header{
-		Version:   1,
-		Flags:     flags,
+		Version:   ltx.Version,
 		PageSize:  hdr.pageSize,
 		Commit:    hdr.pageN,
 		MinTXID:   ltx.TXID(1),
@@ -113,6 +138,11 @@ Arguments:
 	} else if err := out.Close(); err != nil {
 		return fmt.Errorf("close ltx file: %w", err)
 	}
+	out = nil
+	if err := os.Rename(tmpPath, *outPath); err != nil {
+		return fmt.Errorf("rename temporary output file: %w", err)
+	}
+	tmpPath = ""
 
 	return nil
 }
