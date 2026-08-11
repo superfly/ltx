@@ -348,7 +348,7 @@ func IsValidHeaderFlags(flags uint32) bool {
 // Trailer represents the ending frame of an LTX file.
 type Trailer struct {
 	PostApplyChecksum Checksum // rolling checksum of database after this LTX file is applied
-	FileChecksum      Checksum // crc64 checksum of entire file
+	FileChecksum      Checksum // crc64 checksum of logical file content and structural metadata
 }
 
 // Validate returns an error if t is invalid.
