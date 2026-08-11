@@ -206,7 +206,11 @@ func TestDecoder_DecodeDatabaseTo(t *testing.T) {
 			}
 		}
 
-		enc.SetPostApplyChecksum(0xc19b668c376662c7)
+		postApplyChecksum, err := ltx.ChecksumReader(bytes.NewReader(want.Bytes()), 4096)
+		if err != nil {
+			t.Fatal(err)
+		}
+		enc.SetPostApplyChecksum(postApplyChecksum)
 		if err := enc.Close(); err != nil {
 			t.Fatal(err)
 		}

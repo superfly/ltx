@@ -29,6 +29,50 @@ func TestChecksumPages(t *testing.T) {
 	testChecksumPages(t, 0, 4, 1024, 4)
 }
 
+func TestChecksumPages_LockPage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping in short mode")
+	}
+
+	const pageSize = uint32(4096)
+	lockPgno := LockPgno(pageSize)
+	nPages := lockPgno + 100
+	path := filepath.Join(t.TempDir(), "test.db")
+
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := f.Truncate(int64(nPages) * int64(pageSize)); err != nil {
+		t.Fatal(err)
+	}
+
+	checksums := make([]Checksum, nPages)
+	checksums[lockPgno-1] = ChecksumFlag | 1
+	lastPage, err := ChecksumPages(path, pageSize, nPages, 0, checksums)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := lastPage, nPages; got != want {
+		t.Fatalf("last page=%d, want %d", got, want)
+	}
+	if got := checksums[lockPgno-1]; got != 0 {
+		t.Fatalf("lock page checksum=%s, want 0", got)
+	}
+
+	zeroPage := make([]byte, pageSize)
+	for _, pgno := range []uint32{lockPgno - 1, lockPgno + 1} {
+		if got, want := checksums[pgno-1], ChecksumPage(pgno, zeroPage); got != want {
+			t.Fatalf("page %d checksum=%s, want %s", pgno, got, want)
+		}
+	}
+}
+
 func testChecksumPages(t *testing.T, fileSize, nPages, pageSize, nWorkers uint32) {
 	t.Run(fmt.Sprintf("fileSize=%d,nPages=%d,pageSize=%d,nWorkers=%d", fileSize, nPages, pageSize, nWorkers), func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "test.db")
