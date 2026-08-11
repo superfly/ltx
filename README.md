@@ -6,9 +6,12 @@ a way that can be encrypted and compacted and is optimized for performance.
 
 ## File Format
 
-This document describes format version 3. The numeric version is not stored in
-the file. The `LTX1` magic number is the only on-disk version discriminator, and
-decoding it sets `Header.Version` in memory.
+This document describes format version 3. LTX files carry no on-disk version
+field, and versions 2 and 3 both use the `LTX1` magic number. Version 2 page
+frames used a four-byte page header with no flags or compressed-size prefix.
+Version 3 uses a six-byte page header and, in the current encoding, a four-byte
+compressed-size prefix. A reader cannot determine the format version from the
+file alone and must know it out of band.
 
 An LTX file is composed of four sections:
 
@@ -76,9 +79,11 @@ written by the current encoder has this layout:
 | `0x0001` | PageHeaderFlagSize | A four-byte compressed-size field follows. |
 
 `PageHeaderFlagSize` is bit 0 (`1 << 0`). The payload must decompress to
-`Header.PageSize` bytes. The current encoder always sets this flag. The decoder
-also supports legacy page frames without the flag; those store page data as an
-LZ4 frame without a size prefix. All other page header flag bits are invalid.
+`Header.PageSize` bytes. The current encoder always sets this flag. Within
+version 3, the decoder uses it as a per-frame encoding heuristic and supports
+legacy frames without the flag; those store page data as an LZ4 frame without a
+size prefix. The flag is not a format version field. All other page header flag
+bits are invalid.
 
 A six-byte zero page header terminates the page block and has no size prefix or
 page data.
