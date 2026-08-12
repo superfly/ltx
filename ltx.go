@@ -178,8 +178,8 @@ func (t *TXID) UnmarshalJSON(data []byte) (err error) {
 const (
 	HeaderFlagMask = uint32(HeaderFlagNoChecksum | HeaderFlagEncryptedHPKE)
 
-	HeaderFlagNoChecksum     = uint32(1 << 1)
-	HeaderFlagEncryptedHPKE  = uint32(1 << 2)
+	HeaderFlagNoChecksum    = uint32(1 << 1)
+	HeaderFlagEncryptedHPKE = uint32(1 << 2)
 )
 
 // Encryption constants.

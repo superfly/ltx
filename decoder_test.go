@@ -13,7 +13,7 @@ import (
 func TestDecoder(t *testing.T) {
 	spec := &ltx.FileSpec{
 		Header: ltx.Header{
-			Version:   ltx.Version,
+			Version:   ltx.Version3,
 			PageSize:  1024,
 			Commit:    2,
 			MinTXID:   1,
@@ -109,7 +109,7 @@ func TestDecoder(t *testing.T) {
 func TestDecoder_Decode_CommitZero(t *testing.T) {
 	spec := &ltx.FileSpec{
 		Header: ltx.Header{
-			Version:   ltx.Version,
+			Version:   ltx.Version3,
 			Flags:     0,
 			PageSize:  1024,
 			Commit:    0,
@@ -398,23 +398,77 @@ func TestDecoder_Encrypted(t *testing.T) {
 		}
 	})
 
-	t.Run("NoKeyForEncryptedFile", func(t *testing.T) {
-		pub, _, _ := ltx.GenerateKeyPair()
+	// encodeEncrypted builds a single-page encrypted file for the keyless tests.
+	encodeEncrypted := func(t *testing.T) []byte {
+		t.Helper()
+
+		pub, _, err := ltx.GenerateKeyPair()
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		var buf bytes.Buffer
-		enc, _ := ltx.NewEncoder(&buf)
-		_ = enc.SetEncryption([][]byte{pub})
-		_ = enc.EncodeHeader(ltx.Header{
+		enc, err := ltx.NewEncoder(&buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.SetEncryption([][]byte{pub}); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodeHeader(ltx.Header{
 			Version: ltx.Version, PageSize: 1024, Commit: 1,
 			MinTXID: 1, MaxTXID: 1, Timestamp: 1000,
-		})
-		_ = enc.EncodePage(ltx.PageHeader{Pgno: 1}, make([]byte, 1024))
-		enc.SetPostApplyChecksum(ltx.ChecksumFlag)
-		_ = enc.Close()
+		}); err != nil {
+			t.Fatal(err)
+		}
+		page := bytes.Repeat([]byte("s"), 1024)
+		if err := enc.EncodePage(ltx.PageHeader{Pgno: 1}, page); err != nil {
+			t.Fatal(err)
+		}
+		enc.SetPostApplyChecksum(ltx.ChecksumPage(1, page))
+		if err := enc.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return buf.Bytes()
+	}
 
-		dec := ltx.NewDecoder(&buf)
-		if err := dec.DecodeHeader(); err != ltx.ErrDecryptionKeyRequired {
+	// The file checksum of an encrypted file covers the ciphertext as written,
+	// so integrity is verifiable by a holder of the file alone. Contents are
+	// not: DecodePage must refuse rather than hand back an empty buffer.
+	t.Run("NoKeyVerifiesIntegrity", func(t *testing.T) {
+		b := encodeEncrypted(t)
+
+		if err := ltx.NewDecoder(bytes.NewReader(b)).Verify(); err != nil {
+			t.Fatalf("keyless Verify should succeed on an intact file: %v", err)
+		}
+	})
+
+	t.Run("NoKeyRefusesPageContents", func(t *testing.T) {
+		b := encodeEncrypted(t)
+
+		dec := ltx.NewDecoder(bytes.NewReader(b))
+		if err := dec.DecodeHeader(); err != nil {
+			t.Fatalf("keyless DecodeHeader should succeed: %v", err)
+		}
+
+		var hdr ltx.PageHeader
+		data := make([]byte, 1024)
+		if err := dec.DecodePage(&hdr, data); err != ltx.ErrDecryptionKeyRequired {
 			t.Fatalf("expected ErrDecryptionKeyRequired, got: %v", err)
+		}
+	})
+
+	t.Run("NoKeyDetectsCorruption", func(t *testing.T) {
+		b := encodeEncrypted(t)
+
+		// Flip a bit in the final page's ciphertext. Keyless verification must
+		// still catch it, otherwise hashing ciphertext buys nothing.
+		corrupt := make([]byte, len(b))
+		copy(corrupt, b)
+		corrupt[len(corrupt)-40] ^= 0x01
+
+		if err := ltx.NewDecoder(bytes.NewReader(corrupt)).Verify(); err == nil {
+			t.Fatal("keyless Verify accepted a corrupted file")
 		}
 	})
 

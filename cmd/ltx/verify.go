@@ -80,5 +80,15 @@ func (c *VerifyCommand) verifyFile(_ context.Context, filename string, decryptio
 	if decryptionKey != nil {
 		dec.SetDecryptionKey(decryptionKey)
 	}
-	return dec.Verify()
+	if err := dec.Verify(); err != nil {
+		return err
+	}
+
+	// An encrypted file verified without a key has had its integrity checked
+	// against the file checksum, which covers the ciphertext. Say so, rather
+	// than letting a bare "ok" imply the contents were checked too.
+	if dec.Header().Encrypted() && decryptionKey == nil {
+		fmt.Printf("%s: integrity ok (encrypted; contents not verified, no key supplied)\n", filename)
+	}
+	return nil
 }

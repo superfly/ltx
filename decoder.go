@@ -34,7 +34,11 @@ type Decoder struct {
 	n      int64 // bytes read
 
 	// Encryption fields
-	encrypted      bool
+	encrypted bool
+	// keyless is set when the file is encrypted but no decryption key was
+	// supplied. The file checksum covers ciphertext, so integrity can still be
+	// verified; page contents cannot.
+	keyless        bool
 	privKey        []byte
 	cek            []byte
 	pageKey        []byte
@@ -131,10 +135,13 @@ func (dec *Decoder) Close() error {
 			return fmt.Errorf("read page index: %w", err)
 		}
 
-		// Verify index auth tag.
-		authTag := remainingBytes[authTagStart : authTagStart+AuthTagSize]
-		if err := VerifyIndexAuth(dec.indexKey, indexBytes, authTag); err != nil {
-			return err
+		// Verify index auth tag. Requires the index key, so it is skipped when
+		// decoding without a key; the file checksum still covers these bytes.
+		if !dec.keyless {
+			authTag := remainingBytes[authTagStart : authTagStart+AuthTagSize]
+			if err := VerifyIndexAuth(dec.indexKey, indexBytes, authTag); err != nil {
+				return err
+			}
 		}
 
 		// Read trailer (skip duplicate recipient block, already consumed by hash).
@@ -168,8 +175,10 @@ func (dec *Decoder) Close() error {
 		return ErrChecksumMismatch
 	}
 
-	// Verify post-apply checksum for snapshot files if checksums are being tracked.
-	if dec.header.IsSnapshot() && !dec.header.NoChecksum() {
+	// Verify post-apply checksum for snapshot files if checksums are being
+	// tracked. The rolling checksum is computed over plaintext pages, so it is
+	// unavailable when decoding without a key.
+	if dec.header.IsSnapshot() && !dec.header.NoChecksum() && !dec.keyless {
 		if dec.trailer.PostApplyChecksum != dec.chksum {
 			return fmt.Errorf("post-apply checksum in trailer (%s) does not match calculated checksum (%s)", dec.trailer.PostApplyChecksum, dec.chksum)
 		}
@@ -205,9 +214,10 @@ func (dec *Decoder) DecodeHeader() error {
 
 	// Handle encryption.
 	if dec.header.Encrypted() {
-		if dec.privKey == nil {
-			return ErrDecryptionKeyRequired
-		}
+		// Without a key the file can still be checked for integrity, because the
+		// file checksum covers the ciphertext as written. Page contents stay
+		// unreadable: DecodePage refuses to hand back plaintext in this mode.
+		dec.keyless = dec.privKey == nil
 
 		dec.encrypted = true
 		dec.headerHash = HeaderHash(b)
@@ -226,21 +236,23 @@ func (dec *Decoder) DecodeHeader() error {
 		}
 		dec.recipientBlock = &rb
 
-		// Open CEK.
-		cek, err := OpenCEK(&rb, dec.privKey)
-		if err != nil {
-			return fmt.Errorf("open CEK: %w", err)
-		}
-		dec.cek = cek
+		if !dec.keyless {
+			// Open CEK.
+			cek, err := OpenCEK(&rb, dec.privKey)
+			if err != nil {
+				return fmt.Errorf("open CEK: %w", err)
+			}
+			dec.cek = cek
 
-		// Derive keys.
-		dec.pageKey, err = DerivePageKey(cek)
-		if err != nil {
-			return fmt.Errorf("derive page key: %w", err)
-		}
-		dec.indexKey, err = DeriveIndexKey(cek)
-		if err != nil {
-			return fmt.Errorf("derive index key: %w", err)
+			// Derive keys.
+			dec.pageKey, err = DerivePageKey(cek)
+			if err != nil {
+				return fmt.Errorf("derive page key: %w", err)
+			}
+			dec.indexKey, err = DeriveIndexKey(cek)
+			if err != nil {
+				return fmt.Errorf("derive index key: %w", err)
+			}
 		}
 	}
 
@@ -248,7 +260,20 @@ func (dec *Decoder) DecodeHeader() error {
 }
 
 // DecodePage reads the next page header into hdr and associated page data.
+//
+// Returns ErrDecryptionKeyRequired for an encrypted file opened without a
+// decryption key. Use Verify to check such a file's integrity instead.
 func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
+	if dec.keyless {
+		return ErrDecryptionKeyRequired
+	}
+	return dec.decodePage(hdr, data)
+}
+
+// decodePage reads the next page frame. When dec.keyless is set the ciphertext
+// is read and folded into the file checksum but not decrypted, and data is left
+// untouched.
+func (dec *Decoder) decodePage(hdr *PageHeader, data []byte) error {
 	if dec.state == stateClosed {
 		return ErrDecoderClosed
 	} else if dec.state == stateClose {
@@ -303,6 +328,13 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 			// Hash the encrypted data (what's on disk).
 			_, _ = dec.hash.Write(rawData)
 			dec.n += int64(len(rawData))
+
+			// Without a key, the ciphertext has been folded into the file
+			// checksum and there is nothing further to do for this page.
+			if dec.keyless {
+				dec.pageN++
+				return nil
+			}
 
 			// Decrypt.
 			aad := BuildPageAAD(dec.headerHash, hdr.Pgno, b)
@@ -363,7 +395,10 @@ func (dec *Decoder) Verify() error {
 	var pageHeader PageHeader
 	data := make([]byte, dec.header.PageSize)
 	for i := 0; ; i++ {
-		if err := dec.DecodePage(&pageHeader, data); err == io.EOF {
+		// decodePage rather than DecodePage: for an encrypted file with no key
+		// this verifies the file checksum over the ciphertext without
+		// attempting to recover page contents.
+		if err := dec.decodePage(&pageHeader, data); err == io.EOF {
 			break
 		} else if err != nil {
 			return fmt.Errorf("decode page %d: %w", i, err)

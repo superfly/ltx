@@ -238,7 +238,11 @@ func (enc *Encoder) EncodeHeader(hdr Header) error {
 		return fmt.Errorf("cannot encode header frame, expected %s", enc.state)
 	}
 
-	// Apply encryption settings to header if encryption is configured.
+	// Emit the lowest format version that can represent the requested features.
+	// Encryption is the only v4 feature, so an unencrypted file is written as v3
+	// with the LTX1 magic. An unencrypted v4 header is byte-identical to a v3
+	// header anyway, so emitting v4 here would break every existing reader
+	// without changing the file.
 	if enc.encrypted {
 		hdr.Version = Version
 		hdr.Flags |= HeaderFlagEncryptedHPKE
@@ -246,6 +250,8 @@ func (enc *Encoder) EncodeHeader(hdr Header) error {
 		hdr.KEMID = KEMX25519
 		hdr.KDFID = KDFSHA256
 		hdr.AEADID = AEADChaCha
+	} else {
+		hdr.Version = Version3
 	}
 
 	if err := hdr.Validate(); err != nil {
@@ -370,16 +376,14 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 			return fmt.Errorf("write data size: %w", err)
 		}
 
-		// Write encrypted data — hash the encrypted bytes (what goes to disk).
+		// The file checksum covers the ciphertext as written, not the plaintext
+		// it covers for unencrypted files. That is deliberate: it lets a holder
+		// of the file verify integrity without holding a decryption key.
 		if _, err := enc.w.Write(encrypted); err != nil {
 			return fmt.Errorf("write encrypted page data: %w", err)
 		}
 		_, _ = enc.hash.Write(encrypted)
 		enc.n += int64(len(encrypted))
-
-		// Also hash the uncompressed data for CRC64 rolling checksum.
-		// The enc.hash already includes the encrypted bytes for file checksum.
-		// But we DON'T hash uncompressed data into the file checksum — that's separate.
 	} else {
 		// Write data size (4 bytes, big-endian).
 		sizeBuf := make([]byte, 4)

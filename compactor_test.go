@@ -14,7 +14,7 @@ func TestCompactor_Compact(t *testing.T) {
 	t.Run("SingleFilePageDataOnly", func(t *testing.T) {
 		input := &ltx.FileSpec{
 			Header: ltx.Header{
-				Version:          ltx.Version,
+				Version:          ltx.Version3,
 				PageSize:         512,
 				Commit:           1,
 				MinTXID:          1,
@@ -103,7 +103,7 @@ func TestCompactor_Compact(t *testing.T) {
 
 		assertFileSpecEqual(t, spec, &ltx.FileSpec{
 			Header: ltx.Header{
-				Version:   ltx.Version,
+				Version:   ltx.Version3,
 				PageSize:  1024,
 				Commit:    3,
 				MinTXID:   1,
@@ -183,7 +183,7 @@ func TestCompactor_Compact(t *testing.T) {
 
 		assertFileSpecEqual(t, spec, &ltx.FileSpec{
 			Header: ltx.Header{
-				Version:          ltx.Version,
+				Version:          ltx.Version3,
 				PageSize:         1024,
 				Commit:           5,
 				MinTXID:          2,
@@ -227,7 +227,7 @@ func TestCompactor_Compact(t *testing.T) {
 
 		assertFileSpecEqual(t, spec, &ltx.FileSpec{
 			Header: ltx.Header{
-				Version:          ltx.Version,
+				Version:          ltx.Version3,
 				PageSize:         1024,
 				Commit:           2,
 				MinTXID:          2,
