@@ -2,6 +2,7 @@ package ltx
 
 import (
 	"crypto/ecdh"
+	"crypto/hkdf"
 	"crypto/hpke"
 	"crypto/rand"
 	"crypto/sha256"
@@ -10,7 +11,6 @@ import (
 	"io"
 
 	"golang.org/x/crypto/chacha20poly1305"
-	"golang.org/x/crypto/hkdf"
 )
 
 const (
@@ -41,6 +41,16 @@ func GenerateKeyPair() (pub, priv []byte, err error) {
 	return privKey.PublicKey().Bytes(), privBytes, nil
 }
 
+// GenerateCEK returns a fresh random content encryption key.
+//
+// A CEK MUST NOT be reused across files. Both AEAD constructions below depend
+// on it: AuthenticateIndex uses a fixed nonce, and EncryptPage uses random
+// 96-bit nonces. Each is safe only because the keys derived from a CEK
+// authenticate and encrypt exactly one file. Reusing a CEK across files with
+// differing content reuses a (key, nonce) pair, which for Poly1305 leaks the
+// authenticator key and permits forgery. If a future change wants to avoid
+// re-encrypting pages (during compaction, say), it must derive fresh nonces
+// rather than reuse the CEK.
 func GenerateCEK() ([]byte, error) {
 	cek := make([]byte, CEKSize)
 	if _, err := io.ReadFull(rand.Reader, cek); err != nil {
@@ -140,14 +150,19 @@ func DeriveIndexKey(cek []byte) ([]byte, error) {
 }
 
 func deriveKey(cek []byte, info string) ([]byte, error) {
-	r := hkdf.Expand(sha256.New, cek, []byte(info))
-	key := make([]byte, CEKSize)
-	if _, err := io.ReadFull(r, key); err != nil {
+	key, err := hkdf.Expand(sha256.New, cek, info, CEKSize)
+	if err != nil {
 		return nil, fmt.Errorf("derive key (%s): %w", info, err)
 	}
 	return key, nil
 }
 
+// EncryptPage seals one compressed page under a random nonce, returning
+// nonce || ciphertext || tag.
+//
+// Nonces are random and 96 bits wide, so safety rests on pageKey being derived
+// from a per-file CEK: the birthday bound only has to cover the pages of a
+// single file, not every page ever written. See [GenerateCEK].
 func EncryptPage(pageKey, compressed, aad []byte) ([]byte, error) {
 	aead, err := chacha20poly1305.New(pageKey)
 	if err != nil {
@@ -195,6 +210,13 @@ func BuildPageAAD(headerHash [32]byte, pgno uint32, pageHeaderBytes []byte) []by
 	return aad
 }
 
+// AuthenticateIndex returns a Poly1305 tag over the page index bytes, which are
+// passed as additional data with an empty plaintext.
+//
+// The nonce is a fixed constant. That is safe ONLY because indexKey is derived
+// from a per-file CEK and therefore authenticates exactly one index. Two
+// different indexes authenticated under the same key and this nonce would leak
+// the Poly1305 key and allow index forgery. See [GenerateCEK].
 func AuthenticateIndex(indexKey, indexBytes []byte) ([]byte, error) {
 	aead, err := chacha20poly1305.New(indexKey)
 	if err != nil {
