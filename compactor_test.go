@@ -14,7 +14,7 @@ func TestCompactor_Compact(t *testing.T) {
 	t.Run("SingleFilePageDataOnly", func(t *testing.T) {
 		input := &ltx.FileSpec{
 			Header: ltx.Header{
-				Version:          ltx.Version,
+				Version:          ltx.Version3,
 				PageSize:         512,
 				Commit:           1,
 				MinTXID:          1,
@@ -103,7 +103,7 @@ func TestCompactor_Compact(t *testing.T) {
 
 		assertFileSpecEqual(t, spec, &ltx.FileSpec{
 			Header: ltx.Header{
-				Version:   ltx.Version,
+				Version:   ltx.Version3,
 				PageSize:  1024,
 				Commit:    3,
 				MinTXID:   1,
@@ -183,7 +183,7 @@ func TestCompactor_Compact(t *testing.T) {
 
 		assertFileSpecEqual(t, spec, &ltx.FileSpec{
 			Header: ltx.Header{
-				Version:          ltx.Version,
+				Version:          ltx.Version3,
 				PageSize:         1024,
 				Commit:           5,
 				MinTXID:          2,
@@ -227,7 +227,7 @@ func TestCompactor_Compact(t *testing.T) {
 
 		assertFileSpecEqual(t, spec, &ltx.FileSpec{
 			Header: ltx.Header{
-				Version:          ltx.Version,
+				Version:          ltx.Version3,
 				PageSize:         1024,
 				Commit:           2,
 				MinTXID:          2,
@@ -324,6 +324,167 @@ func TestCompactor_Compact(t *testing.T) {
 		c.AllowNonContiguousTXIDs = true
 		if err := c.Compact(context.Background()); err != nil {
 			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+
+	t.Run("EncryptedToEncrypted", func(t *testing.T) {
+		pub, priv, _ := ltx.GenerateKeyPair()
+
+		page1Data := bytes.Repeat([]byte{0x81}, 1024)
+		page2Data := bytes.Repeat([]byte{0x82}, 1024)
+
+		// Create encrypted input.
+		var encBuf bytes.Buffer
+		enc, _ := ltx.NewEncoder(&encBuf)
+		_ = enc.SetEncryption([][]byte{pub})
+		_ = enc.EncodeHeader(ltx.Header{
+			Version: ltx.Version, PageSize: 1024, Commit: 2,
+			MinTXID: 1, MaxTXID: 1, Timestamp: 1000,
+		})
+		_ = enc.EncodePage(ltx.PageHeader{Pgno: 1}, page1Data)
+		_ = enc.EncodePage(ltx.PageHeader{Pgno: 2}, page2Data)
+		chksum := ltx.ChecksumFlag
+		chksum = ltx.ChecksumFlag | (chksum ^ ltx.ChecksumPage(1, page1Data))
+		chksum = ltx.ChecksumFlag | (chksum ^ ltx.ChecksumPage(2, page2Data))
+		enc.SetPostApplyChecksum(chksum)
+		_ = enc.Close()
+
+		// Compact encrypted → encrypted.
+		var output bytes.Buffer
+		c, _ := ltx.NewCompactor(&output, []io.Reader{&encBuf})
+		c.DecryptionKey = priv
+		c.OutputEncryption = [][]byte{pub}
+		if err := c.Compact(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+
+		// Verify output is decryptable.
+		dec := ltx.NewDecoder(&output)
+		dec.SetDecryptionKey(priv)
+		if err := dec.DecodeHeader(); err != nil {
+			t.Fatal(err)
+		}
+		if !dec.Header().Encrypted() {
+			t.Fatal("expected encrypted output")
+		}
+
+		var hdr ltx.PageHeader
+		data := make([]byte, 1024)
+		if err := dec.DecodePage(&hdr, data); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(data, page1Data) {
+			t.Fatal("page 1 data mismatch")
+		}
+		if err := dec.DecodePage(&hdr, data); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(data, page2Data) {
+			t.Fatal("page 2 data mismatch")
+		}
+		if err := dec.DecodePage(&hdr, data); err != io.EOF {
+			t.Fatal("expected EOF")
+		}
+		if err := dec.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("EncryptedToUnencrypted", func(t *testing.T) {
+		pub, priv, _ := ltx.GenerateKeyPair()
+
+		page1Data := bytes.Repeat([]byte{0x81}, 1024)
+
+		var encBuf bytes.Buffer
+		enc, _ := ltx.NewEncoder(&encBuf)
+		_ = enc.SetEncryption([][]byte{pub})
+		_ = enc.EncodeHeader(ltx.Header{
+			Version: ltx.Version, PageSize: 1024, Commit: 1,
+			MinTXID: 1, MaxTXID: 1, Timestamp: 1000,
+		})
+		_ = enc.EncodePage(ltx.PageHeader{Pgno: 1}, page1Data)
+		enc.SetPostApplyChecksum(ltx.ChecksumFlag | ltx.ChecksumPage(1, page1Data))
+		_ = enc.Close()
+
+		// Compact encrypted → unencrypted.
+		var output bytes.Buffer
+		c, _ := ltx.NewCompactor(&output, []io.Reader{&encBuf})
+		c.DecryptionKey = priv
+		if err := c.Compact(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+
+		// Verify output is unencrypted.
+		dec := ltx.NewDecoder(&output)
+		if err := dec.DecodeHeader(); err != nil {
+			t.Fatal(err)
+		}
+		if dec.Header().Encrypted() {
+			t.Fatal("expected unencrypted output")
+		}
+
+		var hdr ltx.PageHeader
+		data := make([]byte, 1024)
+		if err := dec.DecodePage(&hdr, data); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(data, page1Data) {
+			t.Fatal("data mismatch")
+		}
+		if err := dec.DecodePage(&hdr, data); err != io.EOF {
+			t.Fatal("expected EOF")
+		}
+		if err := dec.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("UnencryptedToEncrypted", func(t *testing.T) {
+		pub, priv, _ := ltx.GenerateKeyPair()
+
+		page1Data := bytes.Repeat([]byte{0x81}, 1024)
+
+		var buf bytes.Buffer
+		enc, _ := ltx.NewEncoder(&buf)
+		_ = enc.EncodeHeader(ltx.Header{
+			Version: ltx.Version, PageSize: 1024, Commit: 1,
+			MinTXID: 1, MaxTXID: 1, Timestamp: 1000,
+		})
+		_ = enc.EncodePage(ltx.PageHeader{Pgno: 1}, page1Data)
+		enc.SetPostApplyChecksum(ltx.ChecksumFlag | ltx.ChecksumPage(1, page1Data))
+		_ = enc.Close()
+
+		// Compact unencrypted → encrypted.
+		var output bytes.Buffer
+		c, _ := ltx.NewCompactor(&output, []io.Reader{&buf})
+		c.OutputEncryption = [][]byte{pub}
+		if err := c.Compact(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+
+		// Verify output is encrypted and decryptable.
+		dec := ltx.NewDecoder(&output)
+		dec.SetDecryptionKey(priv)
+		if err := dec.DecodeHeader(); err != nil {
+			t.Fatal(err)
+		}
+		if !dec.Header().Encrypted() {
+			t.Fatal("expected encrypted output")
+		}
+
+		var hdr ltx.PageHeader
+		data := make([]byte, 1024)
+		if err := dec.DecodePage(&hdr, data); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(data, page1Data) {
+			t.Fatal("data mismatch")
+		}
+		if err := dec.DecodePage(&hdr, data); err != io.EOF {
+			t.Fatal("expected EOF")
+		}
+		if err := dec.Close(); err != nil {
+			t.Fatal(err)
 		}
 	})
 

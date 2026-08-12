@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
@@ -20,16 +21,19 @@ func NewVerifyCommand() *VerifyCommand {
 // Run executes the command.
 func (c *VerifyCommand) Run(ctx context.Context, args []string) (ret error) {
 	fs := flag.NewFlagSet("ltx-verify", flag.ContinueOnError)
+	keyHex := fs.String("key", "", "hex-encoded private key for decryption")
 	fs.Usage = func() {
 		fmt.Println(`
 The verify command reads one or more LTX files and verifies its integrity.
 
 Usage:
 
-	ltx verify PATH [PATH...]
+	ltx verify [arguments] PATH [PATH...]
 
-`[1:],
-		)
+Arguments:
+`[1:])
+		fs.PrintDefaults()
+		fmt.Println()
 	}
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -37,9 +41,18 @@ Usage:
 		return fmt.Errorf("at least one LTX file must be specified")
 	}
 
+	var decryptionKey []byte
+	if *keyHex != "" {
+		var err error
+		decryptionKey, err = hex.DecodeString(*keyHex)
+		if err != nil {
+			return fmt.Errorf("invalid -key: %w", err)
+		}
+	}
+
 	var okN, errorN int
 	for _, filename := range fs.Args() {
-		if err := c.verifyFile(ctx, filename); err != nil {
+		if err := c.verifyFile(ctx, filename, decryptionKey); err != nil {
 			errorN++
 			fmt.Printf("%s: %s\n", filename, err)
 			continue
@@ -56,12 +69,26 @@ Usage:
 	return nil
 }
 
-func (c *VerifyCommand) verifyFile(_ context.Context, filename string) error {
+func (c *VerifyCommand) verifyFile(_ context.Context, filename string, decryptionKey []byte) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
 
-	return ltx.NewDecoder(f).Verify()
+	dec := ltx.NewDecoder(f)
+	if decryptionKey != nil {
+		dec.SetDecryptionKey(decryptionKey)
+	}
+	if err := dec.Verify(); err != nil {
+		return err
+	}
+
+	// An encrypted file verified without a key has had its integrity checked
+	// against the file checksum, which covers the ciphertext. Say so, rather
+	// than letting a bare "ok" imply the contents were checked too.
+	if dec.Header().Encrypted() && decryptionKey == nil {
+		fmt.Printf("%s: integrity ok (encrypted; contents not verified, no key supplied)\n", filename)
+	}
+	return nil
 }

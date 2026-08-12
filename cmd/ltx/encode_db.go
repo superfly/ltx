@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/superfly/ltx"
@@ -32,6 +34,7 @@ func NewEncodeDBCommand() *EncodeDBCommand {
 func (c *EncodeDBCommand) Run(ctx context.Context, args []string) (ret error) {
 	fs := flag.NewFlagSet("ltx-encode-db", flag.ContinueOnError)
 	outPath := fs.String("o", "", "output path")
+	encryptTo := fs.String("encrypt-to", "", "comma-separated hex-encoded public keys for encryption")
 	fs.Usage = func() {
 		fmt.Println(`
 The encode-db command encodes an SQLite database into an LTX file.
@@ -60,6 +63,17 @@ Arguments:
 		return fmt.Errorf("open DB file: %w", err)
 	}
 	defer func() { _ = db.Close() }()
+
+	var recipientKeys [][]byte
+	if *encryptTo != "" {
+		for _, s := range strings.Split(*encryptTo, ",") {
+			key, err := hex.DecodeString(strings.TrimSpace(s))
+			if err != nil {
+				return fmt.Errorf("invalid -encrypt-to key: %w", err)
+			}
+			recipientKeys = append(recipientKeys, key)
+		}
+	}
 
 	dbInfo, err := db.Stat()
 	if err != nil {
@@ -105,6 +119,11 @@ Arguments:
 	enc, err := ltx.NewEncoder(out)
 	if err != nil {
 		return fmt.Errorf("create ltx encoder: %w", err)
+	}
+	if len(recipientKeys) > 0 {
+		if err := enc.SetEncryption(recipientKeys); err != nil {
+			return fmt.Errorf("set encryption: %w", err)
+		}
 	}
 	if err := enc.EncodeHeader(ltx.Header{
 		Version:   ltx.Version,

@@ -49,8 +49,12 @@ func (m *Main) Run(ctx context.Context, args []string) (err error) {
 		return NewDumpCommand().Run(ctx, args)
 	case "encode-db":
 		return NewEncodeDBCommand().Run(ctx, args)
+	case "keygen":
+		return NewKeygenCommand().Run(ctx, args)
 	case "list":
 		return NewListCommand().Run(ctx, args)
+	case "rekey":
+		return NewRekeyCommand().Run(ctx, args)
 	case "verify":
 		return NewVerifyCommand().Run(ctx, args)
 	case "version":
@@ -85,7 +89,10 @@ The commands are:
 	apply        applies a set of LTX files to a database
 	checksum     computes the LTX checksum of a database file
 	dump         writes out metadata and page headers for a set of LTX files
+	encode-db    encodes an SQLite database into an LTX file
+	keygen       generates an X25519 keypair for HPKE encryption
 	list         lists header & trailer fields for LTX files in a table
+	rekey        re-encrypts an LTX file with new recipients
 	verify       reads & verifies checksums of a set of LTX files
 	version      prints the version
 `[1:])

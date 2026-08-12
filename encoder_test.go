@@ -1,6 +1,7 @@
 package ltx_test
 
 import (
+	"bytes"
 	"io"
 	"math/rand"
 	"path/filepath"
@@ -281,6 +282,84 @@ func TestEncode_EncodePage(t *testing.T) {
 		}
 		if err := enc.EncodePage(ltx.PageHeader{Pgno: 1}, make([]byte, 1024)); err == nil || err.Error() != `out-of-order page numbers: 2,1` {
 			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+}
+
+// TestEncoder_FormatVersionSelection pins the rule that the encoder emits the
+// lowest format version able to represent the requested features. Encryption is
+// the only v4 feature, so unencrypted files must keep the v3 "LTX1" magic that
+// existing readers accept. Emitting "LTX4" for an unencrypted file would break
+// every deployed reader without changing a single other byte.
+func TestEncoder_FormatVersionSelection(t *testing.T) {
+	encode := func(t *testing.T, recipients [][]byte) []byte {
+		t.Helper()
+
+		var buf bytes.Buffer
+		enc, err := ltx.NewEncoder(&buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if recipients != nil {
+			if err := enc.SetEncryption(recipients); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := enc.EncodeHeader(ltx.Header{
+			Version: ltx.Version, PageSize: 512, Commit: 1,
+			MinTXID: 1, MaxTXID: 1, Timestamp: 1000,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		page := bytes.Repeat([]byte("v"), 512)
+		if err := enc.EncodePage(ltx.PageHeader{Pgno: 1}, page); err != nil {
+			t.Fatal(err)
+		}
+		enc.SetPostApplyChecksum(ltx.ChecksumPage(1, page))
+		if err := enc.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return buf.Bytes()
+	}
+
+	t.Run("UnencryptedIsV3", func(t *testing.T) {
+		b := encode(t, nil)
+		if got, want := string(b[:4]), "LTX1"; got != want {
+			t.Fatalf("magic=%q, want %q — unencrypted output must stay readable by v3 readers", got, want)
+		}
+
+		var hdr ltx.Header
+		if err := hdr.UnmarshalBinary(b[:ltx.HeaderSize]); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := hdr.Version, ltx.Version3; got != want {
+			t.Fatalf("version=%d, want %d", got, want)
+		}
+		if hdr.Encrypted() {
+			t.Fatal("unencrypted file reports Encrypted()")
+		}
+	})
+
+	t.Run("EncryptedIsV4", func(t *testing.T) {
+		pub, _, err := ltx.GenerateKeyPair()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		b := encode(t, [][]byte{pub})
+		if got, want := string(b[:4]), "LTX4"; got != want {
+			t.Fatalf("magic=%q, want %q", got, want)
+		}
+
+		var hdr ltx.Header
+		if err := hdr.UnmarshalBinary(b[:ltx.HeaderSize]); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := hdr.Version, ltx.Version; got != want {
+			t.Fatalf("version=%d, want %d", got, want)
+		}
+		if !hdr.Encrypted() {
+			t.Fatal("encrypted file does not report Encrypted()")
 		}
 	})
 }

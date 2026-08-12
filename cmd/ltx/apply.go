@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ func NewApplyCommand() *ApplyCommand {
 func (c *ApplyCommand) Run(ctx context.Context, args []string) (ret error) {
 	fs := flag.NewFlagSet("ltx-apply", flag.ContinueOnError)
 	dbPath := fs.String("db", "", "database path")
+	keyHex := fs.String("key", "", "hex-encoded private key for decryption")
 	fs.Usage = func() {
 		fmt.Println(`
 The apply command applies one or more LTX files to a database file.
@@ -45,6 +47,15 @@ Arguments:
 		return fmt.Errorf("required: -db PATH")
 	}
 
+	var decryptionKey []byte
+	if *keyHex != "" {
+		var err error
+		decryptionKey, err = hex.DecodeString(*keyHex)
+		if err != nil {
+			return fmt.Errorf("invalid -key: %w", err)
+		}
+	}
+
 	// Open database file. Create if it doesn't exist.
 	dbFile, err := os.OpenFile(*dbPath, os.O_RDWR|os.O_CREATE, 0o666)
 	if err != nil {
@@ -54,7 +65,7 @@ Arguments:
 
 	// Apply LTX files in order.
 	for _, filename := range fs.Args() {
-		if err := c.applyLTXFile(ctx, dbFile, filename); err != nil {
+		if err := c.applyLTXFile(ctx, dbFile, filename, decryptionKey); err != nil {
 			return fmt.Errorf("%s: %s", filename, err)
 		}
 	}
@@ -66,7 +77,7 @@ Arguments:
 	return dbFile.Close()
 }
 
-func (c *ApplyCommand) applyLTXFile(_ context.Context, dbFile *os.File, filename string) error {
+func (c *ApplyCommand) applyLTXFile(_ context.Context, dbFile *os.File, filename string, decryptionKey []byte) error {
 	ltxFile, err := os.Open(filename)
 	if err != nil {
 		return err
@@ -75,6 +86,9 @@ func (c *ApplyCommand) applyLTXFile(_ context.Context, dbFile *os.File, filename
 
 	// Read LTX header and verify initial checksum matches.
 	dec := ltx.NewDecoder(ltxFile)
+	if decryptionKey != nil {
+		dec.SetDecryptionKey(decryptionKey)
+	}
 	if err := dec.DecodeHeader(); err != nil {
 		return fmt.Errorf("decode ltx header: %w", err)
 	}

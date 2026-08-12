@@ -11,6 +11,8 @@ type FileSpec struct {
 	Header  Header
 	Pages   []PageSpec
 	Trailer Trailer
+
+	RecipientPublicKeys [][]byte
 }
 
 // Write encodes a file spec to a file.
@@ -19,6 +21,22 @@ func (s *FileSpec) WriteTo(dst io.Writer) (n int64, err error) {
 	if err != nil {
 		return 0, fmt.Errorf("create ltx encoder: %w", err)
 	}
+
+	if len(s.RecipientPublicKeys) > 0 {
+		if err := enc.SetEncryption(s.RecipientPublicKeys); err != nil {
+			return 0, fmt.Errorf("set encryption: %s", err)
+		}
+	} else {
+		// Clear encryption header fields when no recipients are configured.
+		// This prevents writing a corrupt file when a previously-encrypted
+		// FileSpec is written without recipients (e.g. ltx rekey without -encrypt-to).
+		s.Header.Flags &^= HeaderFlagEncryptedHPKE
+		s.Header.RecipientCount = 0
+		s.Header.KEMID = 0
+		s.Header.KDFID = 0
+		s.Header.AEADID = 0
+	}
+
 	if err := enc.EncodeHeader(s.Header); err != nil {
 		return 0, fmt.Errorf("encode header: %s", err)
 	}
@@ -41,9 +59,18 @@ func (s *FileSpec) WriteTo(dst io.Writer) (n int64, err error) {
 	return enc.N(), nil
 }
 
-// ReadFromFile encodes a file spec to a file. Always return n of zero.
+// ReadFrom reads a file spec from a reader.
 func (s *FileSpec) ReadFrom(src io.Reader) (n int64, err error) {
+	return s.ReadFromWithKey(src, nil)
+}
+
+// ReadFromWithKey reads a file spec from a reader, optionally decrypting with the given private key.
+func (s *FileSpec) ReadFromWithKey(src io.Reader, decryptionKey []byte) (n int64, err error) {
 	dec := NewDecoder(src)
+
+	if decryptionKey != nil {
+		dec.SetDecryptionKey(decryptionKey)
+	}
 
 	// Read header frame and initialize spec slices to correct size.
 	if err := dec.DecodeHeader(); err != nil {
