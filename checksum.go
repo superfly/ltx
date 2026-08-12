@@ -78,6 +78,7 @@ func checksumPagesSerial(dbPath string, firstPage, lastPage uint32, pageSize int
 	if err != nil {
 		return firstPage - 1, err
 	}
+	defer func() { _ = f.Close() }()
 
 	_, err = f.Seek(int64(firstPage-1)*pageSize, io.SeekStart)
 	if err != nil {
@@ -86,12 +87,17 @@ func checksumPagesSerial(dbPath string, firstPage, lastPage uint32, pageSize int
 
 	buf := make([]byte, pageSize+4)
 	h := NewHasher()
+	lockPgno := LockPgno(uint32(pageSize))
 
 	for pageNo := firstPage; pageNo <= lastPage; pageNo++ {
 		binary.BigEndian.PutUint32(buf, pageNo)
 
 		if _, err := io.ReadFull(f, buf[4:]); err != nil {
 			return pageNo - 1, err
+		}
+		if pageNo == lockPgno {
+			checksums[pageNo-1] = 0
+			continue
 		}
 
 		h.Reset()
@@ -118,6 +124,7 @@ func ChecksumPageWithHasher(h hash.Hash64, pgno uint32, data []byte) Checksum {
 // ChecksumReader reads an entire database file from r and computes its rolling checksum.
 func ChecksumReader(r io.Reader, pageSize int) (Checksum, error) {
 	data := make([]byte, pageSize)
+	lockPgno := LockPgno(uint32(pageSize))
 
 	var chksum Checksum
 	for pgno := uint32(1); ; pgno++ {
@@ -126,7 +133,9 @@ func ChecksumReader(r io.Reader, pageSize int) (Checksum, error) {
 		} else if err != nil {
 			return chksum, err
 		}
-		chksum = ChecksumFlag | (chksum ^ ChecksumPage(pgno, data))
+		if pgno != lockPgno {
+			chksum = ChecksumFlag | (chksum ^ ChecksumPage(pgno, data))
+		}
 	}
 	return chksum, nil
 }

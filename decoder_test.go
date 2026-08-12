@@ -180,6 +180,9 @@ func TestDecoder_DecodeDatabaseTo(t *testing.T) {
 			t.Skip("skipping in short mode")
 		}
 
+		// This is the canonical lock-page-excluded checksum for the fixture.
+		const canonicalPostApplyChecksum = ltx.Checksum(0xc19b668c376662c7)
+
 		lockPgno := ltx.LockPgno(4096)
 		commit := lockPgno + 10
 
@@ -206,7 +209,14 @@ func TestDecoder_DecodeDatabaseTo(t *testing.T) {
 			}
 		}
 
-		enc.SetPostApplyChecksum(0xc19b668c376662c7)
+		postApplyChecksum, err := ltx.ChecksumReader(bytes.NewReader(want.Bytes()), 4096)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := postApplyChecksum, canonicalPostApplyChecksum; got != want {
+			t.Fatalf("post-apply checksum=%s, want canonical lock-page-excluded checksum %s", got, want)
+		}
+		enc.SetPostApplyChecksum(postApplyChecksum)
 		if err := enc.Close(); err != nil {
 			t.Fatal(err)
 		}
