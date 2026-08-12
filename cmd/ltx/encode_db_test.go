@@ -36,7 +36,9 @@ func TestEncodeDBCommand(t *testing.T) {
 		dec := ltx.NewDecoder(f)
 		if err := dec.Verify(); err != nil {
 			t.Fatal(err)
-		} else if got, want := dec.Header().Version, ltx.Version; got != want {
+		} else if got, want := dec.Header().Version, ltx.Version3; got != want {
+			// Unencrypted output stays at v3 so existing readers keep working;
+			// encryption is the only thing that requires v4.
 			t.Fatalf("version=%d, want %d", got, want)
 		}
 
