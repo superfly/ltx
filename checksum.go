@@ -137,7 +137,7 @@ func ChecksumReader(r io.Reader, pageSize int) (Checksum, error) {
 			chksum = ChecksumFlag | (chksum ^ ChecksumPage(pgno, data))
 		}
 	}
-	return chksum, nil
+	return ChecksumFlag | chksum, nil
 }
 
 // ParseChecksum parses a 16-character hex string into a checksum.

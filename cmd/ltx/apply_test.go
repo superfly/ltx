@@ -111,6 +111,38 @@ func TestApplyCommand_SnapshotOverExistingDatabase(t *testing.T) {
 	}
 }
 
+func TestApplyCommand_ChecksumDeletion(t *testing.T) {
+	const pageSize = 512
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "db")
+	ltxPath := filepath.Join(dir, "deletion.ltx")
+	initial := bytes.Repeat([]byte{0xbc}, pageSize)
+	if err := os.WriteFile(dbPath, initial, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	writeApplyTestLTX(t, ltxPath, &ltx.FileSpec{
+		Header: ltx.Header{
+			Version:          ltx.Version,
+			PageSize:         pageSize,
+			Commit:           0,
+			MinTXID:          2,
+			MaxTXID:          2,
+			PreApplyChecksum: ltx.ChecksumPage(1, initial),
+		},
+		Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag},
+	})
+
+	if err := NewApplyCommand().Run(context.Background(), []string{"-db", dbPath, ltxPath}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(dbPath); err != nil {
+		t.Fatal(err)
+	} else if len(got) != 0 {
+		t.Fatalf("database size=%d, want 0", len(got))
+	}
+}
+
 func writeApplyTestLTX(t *testing.T, path string, spec *ltx.FileSpec) {
 	t.Helper()
 

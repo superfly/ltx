@@ -403,6 +403,14 @@ func TestParseFilename(t *testing.T) {
 }
 
 func TestChecksumReader(t *testing.T) {
+	t.Run("Empty", func(t *testing.T) {
+		if chksum, err := ltx.ChecksumReader(bytes.NewReader(nil), 512); err != nil {
+			t.Fatal(err)
+		} else if got, want := chksum, ltx.ChecksumFlag; got != want {
+			t.Fatalf("got=%x, want %x", got, want)
+		}
+	})
+
 	t.Run("OK", func(t *testing.T) {
 		r := io.MultiReader(
 			bytes.NewReader(bytes.Repeat([]byte("\x01"), 512)),
@@ -418,8 +426,10 @@ func TestChecksumReader(t *testing.T) {
 
 	t.Run("ErrUnexpectedEOF", func(t *testing.T) {
 		r := bytes.NewReader(bytes.Repeat([]byte("\x01"), 512))
-		if _, err := ltx.ChecksumReader(r, 1024); err != io.ErrUnexpectedEOF {
+		if chksum, err := ltx.ChecksumReader(r, 1024); err != io.ErrUnexpectedEOF {
 			t.Fatal(err)
+		} else if got, want := chksum, ltx.Checksum(0); got != want {
+			t.Fatalf("got=%x, want %x", got, want)
 		}
 	})
 }
