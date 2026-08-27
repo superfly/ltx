@@ -76,6 +76,15 @@ func (c *Compactor) Status() CompactorStatus {
 	}
 }
 
+// SetSpillDir enables spilling the output page index to a temp file in dir
+// once it grows past the encoder's spill threshold. See Encoder.SetSpillDir.
+func (c *Compactor) SetSpillDir(dir string) { c.enc.SetSpillDir(dir) }
+
+// Cleanup removes any spill file left by an abandoned compaction and aborts
+// the output encoder if it was not closed successfully. It is safe to call
+// after Compact returns, successfully or not. See Encoder.Cleanup.
+func (c *Compactor) Cleanup() error { return c.enc.Cleanup() }
+
 // Compact merges the input readers into a single LTX writer.
 func (c *Compactor) Compact(ctx context.Context) error {
 	if len(c.inputs) == 0 {
