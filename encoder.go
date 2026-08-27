@@ -6,7 +6,6 @@ import (
 	"hash"
 	"hash/crc64"
 	"io"
-	"slices"
 
 	"github.com/pierrec/lz4/v4"
 )
@@ -19,8 +18,8 @@ type Encoder struct {
 	header  Header
 	trailer Trailer
 	hash    hash.Hash64
-	index   map[uint32]PageIndexElem // page number to offset
-	n       int64                    // bytes written
+	index   pageIndex // pages in write order (ascending pgno)
+	n       int64     // bytes written
 
 	// LZ4 block compression
 	compressor  lz4.Compressor
@@ -36,7 +35,6 @@ func NewEncoder(w io.Writer) (*Encoder, error) {
 	return &Encoder{
 		w:     w,
 		state: stateHeader,
-		index: make(map[uint32]PageIndexElem),
 	}, nil
 }
 
@@ -120,24 +118,20 @@ func (enc *Encoder) Close() error {
 func (enc *Encoder) encodePageIndex() error {
 	offset := enc.n
 
-	// Write elements in sorted page number order.
-	pgnos := make([]uint32, 0, len(enc.index))
-	for pgno := range enc.index {
-		pgnos = append(pgnos, pgno)
-	}
-	slices.Sort(pgnos)
-
+	// EncodePage enforces strictly ascending page numbers, so the index is
+	// already in sorted order.
+	//
 	// Write each element as a varint-encoded tuple.
 	buf := make([]byte, 0, 3*binary.MaxVarintLen64)
-	for _, pgno := range pgnos {
-		elem := enc.index[pgno]
+	for _, chunk := range enc.index.chunks {
+		for _, elem := range chunk {
+			buf = binary.AppendUvarint(buf[:0], uint64(elem.pgno))
+			buf = binary.AppendUvarint(buf, uint64(elem.offset))
+			buf = binary.AppendUvarint(buf, uint64(elem.size))
 
-		buf = binary.AppendUvarint(buf[:0], uint64(pgno))
-		buf = binary.AppendUvarint(buf, uint64(elem.Offset))
-		buf = binary.AppendUvarint(buf, uint64(elem.Size))
-
-		if _, err := enc.write(buf); err != nil {
-			return fmt.Errorf("write page index element: %w", err)
+			if _, err := enc.write(buf); err != nil {
+				return fmt.Errorf("write page index element: %w", err)
+			}
 		}
 	}
 
@@ -269,10 +263,11 @@ func (enc *Encoder) EncodePage(hdr PageHeader, data []byte) (err error) {
 
 	enc.pagesWritten++
 	enc.prevPgno = hdr.Pgno
-	enc.index[hdr.Pgno] = PageIndexElem{
-		Offset: offset,
-		Size:   enc.n - offset,
-	}
+	enc.index.append(pageIndexEntry{
+		pgno:   hdr.Pgno,
+		offset: offset,
+		size:   enc.n - offset,
+	})
 
 	return nil
 }
@@ -287,6 +282,46 @@ func (enc *Encoder) write(b []byte) (n int, err error) {
 func (enc *Encoder) writeToHash(b []byte) {
 	_, _ = enc.hash.Write(b)
 	enc.n += int64(len(b))
+}
+
+// pageIndexEntry is the encoder's in-memory page index element: a compact
+// 24-byte struct rather than a map entry. Large snapshots retain one element
+// per page, and the map representation cost roughly 4x as much memory per
+// page plus rehash spikes while growing (litestream issue #1477).
+type pageIndexEntry struct {
+	pgno   uint32
+	offset int64
+	size   int64
+}
+
+const (
+	// pageIndexMinChunk is the capacity of the first index chunk (6 KiB), so
+	// the many small LTX files written on every sync stay cheap.
+	pageIndexMinChunk = 1 << 8
+	// pageIndexMaxChunk caps chunk capacity (1.5 MiB per chunk).
+	pageIndexMaxChunk = 1 << 16
+)
+
+// pageIndex is an append-only sequence of pageIndexEntry stored in chunks
+// whose capacity doubles from pageIndexMinChunk up to pageIndexMaxChunk.
+// Chunking keeps memory proportional to the pages actually encoded: there is
+// no upfront allocation sized from the (caller-supplied) header commit count
+// and no copy of the whole index when it grows.
+type pageIndex struct {
+	chunks [][]pageIndexEntry
+}
+
+func (idx *pageIndex) append(e pageIndexEntry) {
+	n := len(idx.chunks)
+	if n == 0 || len(idx.chunks[n-1]) == cap(idx.chunks[n-1]) {
+		size := pageIndexMinChunk
+		if n > 0 {
+			size = min(2*cap(idx.chunks[n-1]), pageIndexMaxChunk)
+		}
+		idx.chunks = append(idx.chunks, make([]pageIndexEntry, 0, size))
+	}
+	last := &idx.chunks[len(idx.chunks)-1]
+	*last = append(*last, e)
 }
 
 type PageIndexElem struct {
