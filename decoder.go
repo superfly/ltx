@@ -1,8 +1,10 @@
 package ltx
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash"
 	"hash/crc64"
@@ -28,21 +30,40 @@ type Decoder struct {
 	pageIndex map[uint32]PageIndexElem
 	state     string
 
+	// retainPageIndex controls whether Close materializes the page index map.
+	// Callers that only stream pages (e.g. compaction inputs) turn it off so a
+	// database-sized map is never built.
+	retainPageIndex bool
+
 	chksum Checksum
 	hash   hash.Hash64
 	pageN  int   // pages read
 	n      int64 // bytes read
+
+	// pageSeq is a running hash of the decoded page numbers in order; Close
+	// compares it with the same hash over the page index so the index must
+	// name exactly the decoded pages, without retaining them.
+	pageSeq hash.Hash64
 }
 
 // NewDecoder returns a new instance of Decoder.
 func NewDecoder(r io.Reader) *Decoder {
 	return &Decoder{
-		r:     r,
-		zr:    lz4.NewReader(r),
-		state: stateHeader,
-		hash:  crc64.New(crc64.MakeTable(crc64.ISO)),
+		r:               r,
+		zr:              lz4.NewReader(r),
+		state:           stateHeader,
+		hash:            crc64.New(crc64.MakeTable(crc64.ISO)),
+		pageSeq:         crc64.New(crc64.MakeTable(crc64.ISO)),
+		retainPageIndex: true,
 	}
 }
+
+// SetRetainPageIndex controls whether Close builds the in-memory page index
+// returned by PageIndex. It defaults to true. When false, Close still reads,
+// validates, and checksums the index but discards the entries, so memory no
+// longer scales with the number of pages in the file; PageIndex returns nil.
+// Must be called before Close.
+func (dec *Decoder) SetRetainPageIndex(retain bool) { dec.retainPageIndex = retain }
 
 // N returns the number of bytes read.
 func (dec *Decoder) N() int64 { return dec.n }
@@ -79,27 +100,56 @@ func (dec *Decoder) Close() error {
 		return fmt.Errorf("cannot close, expected %s", dec.state)
 	}
 
-	// Slurp the remaining data in to memory so we can use the ByteReader interface.
-	remainingBytes, err := io.ReadAll(dec.r)
-	if err != nil {
-		return fmt.Errorf("read all: %w", err)
+	// Stream the page index straight from the reader, hashing bytes as they
+	// are consumed, instead of slurping the tail of the file into memory.
+	// The index is only materialized when retention is requested.
+	br := bufio.NewReader(dec.r)
+	var index map[uint32]PageIndexElem
+	if dec.retainPageIndex {
+		index = make(map[uint32]PageIndexElem)
 	}
-	remaining := bytes.NewReader(remainingBytes)
-
-	// Write everything but the file checksum to the hash.
-	dec.writeToHash(remainingBytes[:len(remainingBytes)-ChecksumSize])
-
-	// Read page index.
-	if dec.pageIndex, err = DecodePageIndex(remaining, 0, dec.header.MinTXID, dec.header.MaxTXID); err != nil {
+	// Index entries must describe one frame per decoded page, in ascending
+	// page order, with non-overlapping frames after the header. (Offsets are
+	// file positions of compressed frames, which the decoder does not track,
+	// so exact page-block bounds are not checked here.)
+	v := pageIndexValidator{commit: dec.header.Commit, nextOffset: HeaderSize, seq: crc64.New(crc64.MakeTable(crc64.ISO))}
+	if err := dec.streamPageIndex(br, func(pgno uint32, offset, size int64) error {
+		if err := v.check(pgno, offset, size); err != nil {
+			return err
+		}
+		if index != nil {
+			index[pgno] = PageIndexElem{
+				MinTXID: dec.header.MinTXID,
+				MaxTXID: dec.header.MaxTXID,
+				Offset:  offset,
+				Size:    size,
+			}
+		}
+		return nil
+	}); err != nil {
 		return fmt.Errorf("read page index: %w", err)
 	}
+	if v.n != dec.pageN {
+		return fmt.Errorf("page index has %d entries but %d pages were decoded", v.n, dec.pageN)
+	}
+	if v.seq.Sum64() != dec.pageSeq.Sum64() {
+		return errors.New("page index does not match the decoded page numbers")
+	}
+	dec.pageIndex = index
 
-	// Read trailer.
+	// Read trailer. Everything except the trailing file checksum is hashed.
 	b := make([]byte, TrailerSize)
-	if _, err := io.ReadFull(remaining, b); err != nil {
-		return err
-	} else if err := dec.trailer.UnmarshalBinary(b); err != nil {
+	if _, err := io.ReadFull(br, b); err != nil {
+		return fmt.Errorf("read trailer: %w", err)
+	}
+	dec.writeToHash(b[:TrailerChecksumOffset])
+	if err := dec.trailer.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("unmarshal trailer: %w", err)
+	}
+	if _, err := br.ReadByte(); err == nil {
+		return errors.New("unexpected data after trailer")
+	} else if !errors.Is(err, io.EOF) {
+		return fmt.Errorf("read after trailer: %w", err)
 	}
 
 	// TODO: Ensure last read page is equal to the commit for snapshot LTX files
@@ -217,6 +267,7 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 
 	dec.writeToHash(data)
 	dec.pageN++
+	hashPgno(dec.pageSeq, hdr.Pgno)
 
 	// Calculate checksum while decoding snapshots if tracking checksums.
 	if dec.header.IsSnapshot() && !dec.header.NoChecksum() {
@@ -366,41 +417,158 @@ func DecodePageData(b []byte) (hdr PageHeader, data []byte, err error) {
 	return hdr, data, err
 }
 
-// DecodePageIndex decodes the page index from r.
+// streamPageIndex reads the page index section (records, end marker, and
+// size field) from br, hashing every byte consumed and validating that page
+// numbers ascend and that the size field matches the bytes read. fn is called
+// for each record in file order.
+func (dec *Decoder) streamPageIndex(br *bufio.Reader, fn func(pgno uint32, offset, size int64) error) error {
+	return parsePageIndex(br, dec.writeToHash, fn)
+}
+
+// pageIndexValidator checks that index entries are structurally plausible
+// without retaining them: page numbers within the commit size, and frames
+// that start after the header, do not overlap, and have a positive size.
+type pageIndexValidator struct {
+	commit     uint32
+	nextOffset int64 // earliest offset the next frame may start at
+	n          int
+	seq        hash.Hash64 // running hash of page numbers, compared with Decoder.pageSeq
+}
+
+func (v *pageIndexValidator) check(pgno uint32, offset, size int64) error {
+	if pgno > v.commit {
+		return fmt.Errorf("page index pgno %d exceeds commit %d", pgno, v.commit)
+	}
+	if offset < v.nextOffset {
+		return fmt.Errorf("page index pgno %d offset %d overlaps previous frame ending at %d", pgno, offset, v.nextOffset)
+	}
+	if size <= PageHeaderSize || offset > math.MaxInt64-size {
+		return fmt.Errorf("page index pgno %d has invalid frame size %d", pgno, size)
+	}
+	v.nextOffset = offset + size
+	v.n++
+	hashPgno(v.seq, pgno)
+	return nil
+}
+
+// hashPgno feeds pgno into a page-sequence hash.
+func hashPgno(h hash.Hash64, pgno uint32) {
+	var b [4]byte
+	binary.BigEndian.PutUint32(b[:], pgno)
+	_, _ = h.Write(b[:])
+}
+
+// parsePageIndex reads page index records from br until the end marker,
+// then the size field, validating that page numbers ascend and that the size
+// field equals the bytes consumed. observe, if non-nil, receives every byte
+// consumed (for checksumming); fn receives every record.
+func parsePageIndex(br io.ByteReader, observe func([]byte), fn func(pgno uint32, offset, size int64) error) error {
+	var scratch [3 * binary.MaxVarintLen64]byte
+	var consumed int64
+	var prevPgno uint32
+	for {
+		buf := scratch[:0]
+		pgno, err := readUvarintInto(br, &buf)
+		if err != nil {
+			return fmt.Errorf("read page index pgno: %w", err)
+		}
+		if pgno == 0 {
+			if observe != nil {
+				observe(buf)
+			}
+			consumed += int64(len(buf))
+			break // end marker
+		}
+		if pgno > math.MaxUint32 {
+			return fmt.Errorf("page index pgno %d out of range", pgno)
+		}
+		if uint32(pgno) <= prevPgno {
+			return fmt.Errorf("page index out of order: %d after %d", pgno, prevPgno)
+		}
+		offset, err := readUvarintInto(br, &buf)
+		if err != nil {
+			return fmt.Errorf("read page index offset: %w", err)
+		}
+		size, err := readUvarintInto(br, &buf)
+		if err != nil {
+			return fmt.Errorf("read page index size: %w", err)
+		}
+		if offset > math.MaxInt64 || size > math.MaxInt64 {
+			return fmt.Errorf("page index pgno %d offset/size out of range", pgno)
+		}
+		if observe != nil {
+			observe(buf)
+		}
+		consumed += int64(len(buf))
+		prevPgno = uint32(pgno)
+		if err := fn(uint32(pgno), int64(offset), int64(size)); err != nil {
+			return err
+		}
+	}
+
+	var sizeBuf [8]byte
+	for i := range sizeBuf {
+		b, err := br.ReadByte()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				err = io.ErrUnexpectedEOF
+			}
+			return fmt.Errorf("read page index size: %w", err)
+		}
+		sizeBuf[i] = b
+	}
+	if observe != nil {
+		observe(sizeBuf[:])
+	}
+	if indexSize := binary.BigEndian.Uint64(sizeBuf[:]); indexSize != uint64(consumed) {
+		return fmt.Errorf("page index size mismatch: field=%d read=%d", indexSize, consumed)
+	}
+	return nil
+}
+
+// readUvarintInto reads a uvarint from br, appending the consumed bytes to *buf.
+func readUvarintInto(br io.ByteReader, buf *[]byte) (uint64, error) {
+	var x uint64
+	var s uint
+	for i := 0; i < binary.MaxVarintLen64; i++ {
+		b, err := br.ReadByte()
+		if err != nil {
+			if errors.Is(err, io.EOF) && i > 0 {
+				err = io.ErrUnexpectedEOF
+			}
+			return 0, err
+		}
+		*buf = append(*buf, b)
+		if b < 0x80 {
+			if i == binary.MaxVarintLen64-1 && b > 1 {
+				return 0, errors.New("uvarint overflows 64 bits")
+			}
+			return x | uint64(b)<<s, nil
+		}
+		x |= uint64(b&0x7f) << s
+		s += 7
+	}
+	return 0, errors.New("uvarint overflows 64 bits")
+}
+
+// DecodePageIndex decodes the page index from r. It validates that page
+// numbers ascend, that offsets and sizes are in range, and that the trailing
+// size field matches the bytes read; it cannot check the index against the
+// page block, so callers reading only the tail of a file must treat the
+// result as untrusted range metadata.
 func DecodePageIndex(r io.ByteReader, level int, minTXID, maxTXID TXID) (map[uint32]PageIndexElem, error) {
 	pageIndex := make(map[uint32]PageIndexElem)
-
-	for {
-		pgno, err := binary.ReadUvarint(r)
-		if err != nil {
-			return nil, fmt.Errorf("read page index pgno: %w", err)
-		} else if pgno == 0 {
-			break // End when we hit the end marker.
-		}
-
-		offset, err := binary.ReadUvarint(r)
-		if err != nil {
-			return nil, fmt.Errorf("read page index offset: %w", err)
-		}
-		size, err := binary.ReadUvarint(r)
-		if err != nil {
-			return nil, fmt.Errorf("read page index size: %w", err)
-		}
-
-		pageIndex[uint32(pgno)] = PageIndexElem{
+	if err := parsePageIndex(r, nil, func(pgno uint32, offset, size int64) error {
+		pageIndex[pgno] = PageIndexElem{
 			Level:   level,
 			MinTXID: minTXID,
 			MaxTXID: maxTXID,
-			Offset:  int64(offset),
-			Size:    int64(size),
+			Offset:  offset,
+			Size:    size,
 		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
-
-	// Read size of page index.
-	var size uint64
-	if err := binary.Read(r.(io.Reader), binary.BigEndian, &size); err != nil {
-		return nil, fmt.Errorf("read page index size: %w", err)
-	}
-
 	return pageIndex, nil
 }

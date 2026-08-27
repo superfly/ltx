@@ -54,7 +54,9 @@ func NewCompactor(w io.Writer, rdrs []io.Reader) (*Compactor, error) {
 	c := &Compactor{enc: enc}
 	c.inputs = make([]*compactorInput, len(rdrs))
 	for i := range c.inputs {
-		c.inputs[i] = &compactorInput{dec: NewDecoder(rdrs[i])}
+		dec := NewDecoder(rdrs[i])
+		dec.SetRetainPageIndex(false) // inputs are streamed; never build a database-sized map
+		c.inputs[i] = &compactorInput{dec: dec}
 	}
 	return c, nil
 }
