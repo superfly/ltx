@@ -46,6 +46,11 @@ var (
 	ErrDecoderClosed = errors.New("ltx decoder closed")
 	ErrEncoderClosed = errors.New("ltx encoder closed")
 
+	// ErrEncoderAborted is returned by an Encoder whose file cannot be
+	// completed: Cleanup ran before a successful Close, or an earlier write
+	// or Close failed.
+	ErrEncoderAborted = errors.New("ltx encoder aborted")
+
 	ErrNoChecksum            = errors.New("no file checksum")
 	ErrInvalidChecksumFormat = errors.New("invalid file checksum format")
 	ErrChecksumMismatch      = errors.New("file checksum mismatch")
@@ -60,6 +65,11 @@ const (
 	statePage   = "page"
 	stateClose  = "close"
 	stateClosed = "closed"
+	// stateAborted is terminal: the encoder was cleaned up before a
+	// successful Close, or a Close failed part-way. Further writes and
+	// closes are refused so a structurally incomplete file cannot be
+	// finished with a valid checksum.
+	stateAborted = "aborted"
 )
 
 // Pos represents the transactional position of a database.
