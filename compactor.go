@@ -2,6 +2,7 @@ package ltx
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
@@ -80,13 +81,28 @@ func (c *Compactor) Status() CompactorStatus {
 // once it grows past the encoder's spill threshold. See Encoder.SetSpillDir.
 func (c *Compactor) SetSpillDir(dir string) { c.enc.SetSpillDir(dir) }
 
+// SetSpillThreshold sets the number of in-memory page index entries that
+// triggers a spill of the output index. See Encoder.SetSpillThreshold.
+func (c *Compactor) SetSpillThreshold(n int) { c.enc.SetSpillThreshold(n) }
+
 // Cleanup removes any spill file left by an abandoned compaction and aborts
 // the output encoder if it was not closed successfully. It is safe to call
 // after Compact returns, successfully or not. See Encoder.Cleanup.
 func (c *Compactor) Cleanup() error { return c.enc.Cleanup() }
 
-// Compact merges the input readers into a single LTX writer.
-func (c *Compactor) Compact(ctx context.Context) error {
+// Compact merges the input readers into a single LTX writer. A failed
+// compaction cannot be resumed, so its output spill file, if any, is removed
+// before returning.
+func (c *Compactor) Compact(ctx context.Context) (err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+		if cerr := c.enc.Cleanup(); cerr != nil {
+			err = errors.Join(err, fmt.Errorf("cleanup spill: %w", cerr))
+		}
+	}()
+
 	if len(c.inputs) == 0 {
 		return fmt.Errorf("at least one input reader required")
 	}

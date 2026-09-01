@@ -382,3 +382,104 @@ func TestCompactor_Compact(t *testing.T) {
 		}
 	})
 }
+
+func TestCompactor_Spill(t *testing.T) {
+	page := func(pgno uint32) ltx.PageSpec {
+		return ltx.PageSpec{Header: ltx.PageHeader{Pgno: pgno}, Data: bytes.Repeat([]byte{byte(pgno)}, 512)}
+	}
+	inputs := []*ltx.FileSpec{
+		{
+			Header:  ltx.Header{Version: ltx.Version, PageSize: 512, Commit: 6, MinTXID: 2, MaxTXID: 2, Timestamp: 1000, PreApplyChecksum: ltx.ChecksumFlag | 1},
+			Pages:   []ltx.PageSpec{page(1), page(2), page(3), page(4), page(5), page(6)},
+			Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 2},
+		},
+		{
+			Header:  ltx.Header{Version: ltx.Version, PageSize: 512, Commit: 6, MinTXID: 3, MaxTXID: 3, Timestamp: 2000, PreApplyChecksum: ltx.ChecksumFlag | 2},
+			Pages:   []ltx.PageSpec{page(2), page(5)},
+			Trailer: ltx.Trailer{PostApplyChecksum: ltx.ChecksumFlag | 3},
+		},
+	}
+	readers := func() []io.Reader {
+		rdrs := make([]io.Reader, len(inputs))
+		for i, input := range inputs {
+			var buf bytes.Buffer
+			writeFileSpec(t, &buf, input)
+			rdrs[i] = &buf
+		}
+		return rdrs
+	}
+
+	var want bytes.Buffer
+	c, err := ltx.NewCompactor(&want, readers())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Compact(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("OutputIdenticalWithSpill", func(t *testing.T) {
+		dir := t.TempDir()
+		var got bytes.Buffer
+		c, err := ltx.NewCompactor(&got, readers())
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.SetSpillDir(dir)
+		c.SetSpillThreshold(2)
+		if err := c.Compact(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got.Bytes(), want.Bytes()) {
+			t.Fatal("spilled compaction output differs from in-memory output")
+		}
+		if names := dirEntries(t, dir); len(names) != 0 {
+			t.Fatalf("spill file left behind: %v", names)
+		}
+		if err := c.Cleanup(); err != nil {
+			t.Fatalf("Cleanup()=%v", err)
+		}
+	})
+
+	t.Run("FailedCompactionRemovesSpill", func(t *testing.T) {
+		dir := t.TempDir()
+		var entriesAtFailure []string
+		w := &callCountingWriter{failOnCall: 11, onFail: func() { entriesAtFailure = dirEntries(t, dir) }}
+		c, err := ltx.NewCompactor(w, readers())
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.SetSpillDir(dir)
+		c.SetSpillThreshold(2)
+		if err := c.Compact(context.Background()); !errors.Is(err, errInjected) {
+			t.Fatalf("Compact()=%v, want %v", err, errInjected)
+		}
+		if len(entriesAtFailure) != 1 {
+			t.Fatalf("expected one spill file at the time of failure, got %v", entriesAtFailure)
+		}
+		if names := dirEntries(t, dir); len(names) != 0 {
+			t.Fatalf("spill file left behind after failed compaction: %v", names)
+		}
+		if err := c.Cleanup(); err != nil {
+			t.Fatalf("Cleanup()=%v", err)
+		}
+	})
+}
+
+type callCountingWriter struct {
+	calls      int
+	failOnCall int
+	onFail     func()
+}
+
+func (w *callCountingWriter) Write(p []byte) (int, error) {
+	w.calls++
+	if w.calls >= w.failOnCall {
+		if w.onFail != nil {
+			w.onFail()
+			w.onFail = nil
+		}
+		return 0, errInjected
+	}
+	return len(p), nil
+}
