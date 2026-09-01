@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/superfly/ltx"
@@ -65,6 +66,16 @@ func dirEntries(t *testing.T, dir string) []string {
 	return names
 }
 
+func requireDirectoryRemovalFailure(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce Unix directory write permissions")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("root can remove files from read-only directories")
+	}
+}
+
 func TestEncoder_SpillFile(t *testing.T) {
 	pgnos := make([]uint32, 0, 1000)
 	for pgno := uint32(3); pgno <= 3000; pgno += 3 {
@@ -114,8 +125,12 @@ func TestEncoder_SpillFile(t *testing.T) {
 		if names := dirEntries(t, dir); len(names) != 1 {
 			t.Fatalf("expected one spill file while open, got %v", names)
 		}
-		enc.Cleanup()
-		enc.Cleanup() // idempotent
+		if err := enc.Cleanup(); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.Cleanup(); err != nil { // idempotent
+			t.Fatal(err)
+		}
 		if names := dirEntries(t, dir); len(names) != 0 {
 			t.Fatalf("spill file left behind after Cleanup: %v", names)
 		}
@@ -283,9 +298,7 @@ func TestEncoder_SpillLifecycle(t *testing.T) {
 	})
 
 	t.Run("CleanupReportsRemovalFailure", func(t *testing.T) {
-		if os.Getuid() == 0 {
-			t.Skip("root can remove files from read-only directories")
-		}
+		requireDirectoryRemovalFailure(t)
 		dir := t.TempDir()
 		var buf bytes.Buffer
 		enc := newSpilledEncoder(t, &buf, dir, 4)
@@ -308,9 +321,7 @@ func TestEncoder_SpillLifecycle(t *testing.T) {
 	})
 
 	t.Run("CloseRetriesFailedSpillRemoval", func(t *testing.T) {
-		if os.Getuid() == 0 {
-			t.Skip("root can remove files from read-only directories")
-		}
+		requireDirectoryRemovalFailure(t)
 		dir := t.TempDir()
 		var buf bytes.Buffer
 		enc := newSpilledEncoder(t, &buf, dir, 4)
@@ -339,6 +350,38 @@ func TestEncoder_SpillLifecycle(t *testing.T) {
 		}
 		if len(buf.Bytes()) == 0 || enc.Spilled() {
 			t.Fatal("expected spill reference cleared after successful removal")
+		}
+	})
+
+	t.Run("FailedCloseRetriesFailedSpillRemoval", func(t *testing.T) {
+		requireDirectoryRemovalFailure(t)
+		dir := t.TempDir()
+		w := &failingWriter{err: errInjected, failAfter: 1 << 30}
+		enc := newSpilledEncoder(t, w, dir, 4)
+		w.failAfter = w.buf.Len()
+		if err := os.Chmod(dir, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+		err := enc.Close()
+		if !errors.Is(err, errInjected) {
+			t.Fatalf("Close()=%v, want injected write failure", err)
+		}
+		var pathErr *os.PathError
+		if !errors.As(err, &pathErr) {
+			t.Fatalf("Close()=%v, want spill cleanup failure", err)
+		}
+		if names := dirEntries(t, dir); len(names) != 1 || !enc.Spilled() {
+			t.Fatalf("expected pending spill after failed removal: %v", names)
+		}
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.Close(); err != ltx.ErrEncoderAborted {
+			t.Fatalf("retried Close()=%v, want ErrEncoderAborted", err)
+		}
+		if names := dirEntries(t, dir); len(names) != 0 || enc.Spilled() {
+			t.Fatalf("spill file left behind after retry: %v", names)
 		}
 	})
 

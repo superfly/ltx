@@ -137,20 +137,30 @@ func (enc *Encoder) Close() (err error) {
 		}
 		return nil // no-op
 	} else if enc.state == stateAborted {
+		if enc.spill != nil {
+			if cerr := enc.Cleanup(); cerr != nil {
+				return errors.Join(ErrEncoderAborted, fmt.Errorf("cleanup spill: %w", cerr))
+			}
+		}
 		return ErrEncoderAborted
 	} else if enc.state != statePage {
 		return fmt.Errorf("cannot close, expected %s", enc.state)
 	}
 
-	// Closing is all-or-nothing: on success the spill file is removed, and
-	// on any failure the encoder is aborted (a retry would emit a second
-	// end-of-pages marker and an empty index) and the spill is still removed.
+	// Closing is all-or-nothing: on success spill cleanup is attempted, and
+	// on any failure the encoder is aborted so it cannot emit a second
+	// end-of-pages marker and an empty index.
 	defer func() {
 		if err != nil {
 			enc.state = stateAborted
 		}
-		if cerr := enc.Cleanup(); cerr != nil && err == nil {
-			err = fmt.Errorf("cleanup spill: %w", cerr)
+		if cerr := enc.Cleanup(); cerr != nil {
+			cerr = fmt.Errorf("cleanup spill: %w", cerr)
+			if err == nil {
+				err = cerr
+			} else {
+				err = errors.Join(err, cerr)
+			}
 		}
 	}()
 
