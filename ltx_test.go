@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"reflect"
 	"testing"
@@ -695,7 +695,7 @@ func BenchmarkChecksumPage(b *testing.B) {
 
 func benchmarkChecksumPage(b *testing.B, pageSize int) {
 	data := make([]byte, pageSize)
-	_, _ = rand.Read(data)
+	_, _ = rand.NewChaCha8([32]byte{}).Read(data)
 	b.ReportAllocs()
 	b.SetBytes(int64(pageSize))
 	b.ResetTimer()
@@ -715,7 +715,7 @@ func BenchmarkChecksumPageWithHasher(b *testing.B) {
 
 func benchmarkChecksumPageWithHasher(b *testing.B, pageSize int) {
 	data := make([]byte, pageSize)
-	_, _ = rand.Read(data)
+	_, _ = rand.NewChaCha8([32]byte{}).Read(data)
 	b.ReportAllocs()
 	b.SetBytes(int64(pageSize))
 	b.ResetTimer()
@@ -733,8 +733,9 @@ func BenchmarkXOR(b *testing.B) {
 
 	m := make(map[uint32]ltx.Checksum)
 	page := make([]byte, pageSize)
+	rnd := rand.NewChaCha8([32]byte{})
 	for pgno := uint32(1); pgno <= pageN; pgno++ {
-		_, _ = rand.Read(page)
+		_, _ = rnd.Read(page)
 		m[pgno] = ltx.ChecksumPage(pgno, page)
 	}
 	b.SetBytes(int64(pageN * pageSize))
