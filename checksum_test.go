@@ -80,7 +80,11 @@ func testChecksumPages(t *testing.T, fileSize, nPages, pageSize, nWorkers uint32
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer f.Close()
+		t.Cleanup(func() {
+			if err := f.Close(); err != nil {
+				t.Error(err)
+			}
+		})
 		if _, err := io.CopyN(f, rand.Reader, int64(fileSize)); err != nil {
 			t.Fatal(err)
 		}
@@ -108,12 +112,16 @@ func testChecksumPages(t *testing.T, fileSize, nPages, pageSize, nWorkers uint32
 }
 
 // logic copied from litefs repo
-func legacyChecksumPages(dbPath string, pageSize, nPages uint32, checksums []Checksum) (uint32, error) {
+func legacyChecksumPages(dbPath string, pageSize, nPages uint32, checksums []Checksum) (lastPage uint32, err error) {
 	f, err := os.Open(dbPath)
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+	}()
 
 	buf := make([]byte, pageSize)
 
