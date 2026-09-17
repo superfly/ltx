@@ -114,13 +114,16 @@ func (c *Compactor) Compact(ctx context.Context) (err error) {
 		}
 	}
 
-	// Validate that reader page sizes match & TXIDs are contiguous.
+	// Validate that reader page sizes and flags match & TXIDs are contiguous.
 	for i := 1; i < len(c.inputs); i++ {
 		prevHdr := c.inputs[i-1].dec.Header()
 		hdr := c.inputs[i].dec.Header()
 
 		if prevHdr.PageSize != hdr.PageSize {
 			return fmt.Errorf("input files have mismatched page sizes: %d != %d", prevHdr.PageSize, hdr.PageSize)
+		}
+		if prevHdr.Flags != hdr.Flags {
+			return fmt.Errorf("input files have mismatched flags: 0x%08x != 0x%08x", prevHdr.Flags, hdr.Flags)
 		}
 		if !c.AllowNonContiguousTXIDs && !IsContiguous(prevHdr.MaxTXID, hdr.MinTXID, hdr.MaxTXID) {
 			return fmt.Errorf("non-contiguous transaction ids in input files: (%s,%s) -> (%s,%s)",
@@ -134,16 +137,30 @@ func (c *Compactor) Compact(ctx context.Context) (err error) {
 	minHdr := c.inputs[0].dec.Header()
 	maxHdr := c.inputs[len(c.inputs)-1].dec.Header()
 
+	// Inherit header flags from inputs if not explicitly specified.
+	flags := c.HeaderFlags
+	if flags == 0 {
+		flags = minHdr.Flags
+	}
+	if minHdr.NoChecksum() && (flags&HeaderFlagNoChecksum == 0) {
+		return fmt.Errorf("cannot compact files without checksums into a file with checksums")
+	}
+
+	var preApplyChecksum Checksum
+	if (flags & HeaderFlagNoChecksum) == 0 {
+		preApplyChecksum = minHdr.PreApplyChecksum
+	}
+
 	// Generate output header. Skip NodeID as it's not meaningful after compaction.
 	if err := c.enc.EncodeHeader(Header{
 		Version:          Version,
-		Flags:            c.HeaderFlags,
+		Flags:            flags,
 		PageSize:         minHdr.PageSize,
 		Commit:           maxHdr.Commit,
 		MinTXID:          minHdr.MinTXID,
 		MaxTXID:          maxHdr.MaxTXID,
 		Timestamp:        maxHdr.Timestamp,
-		PreApplyChecksum: minHdr.PreApplyChecksum,
+		PreApplyChecksum: preApplyChecksum,
 	}); err != nil {
 		return fmt.Errorf("write header: %w", err)
 	}
@@ -164,7 +181,11 @@ func (c *Compactor) Compact(ctx context.Context) (err error) {
 	}
 
 	// Close encoder.
-	c.enc.SetPostApplyChecksum(c.inputs[len(c.inputs)-1].dec.Trailer().PostApplyChecksum)
+	var postApplyChecksum Checksum
+	if (flags & HeaderFlagNoChecksum) == 0 {
+		postApplyChecksum = c.inputs[len(c.inputs)-1].dec.Trailer().PostApplyChecksum
+	}
+	c.enc.SetPostApplyChecksum(postApplyChecksum)
 	if err := c.enc.Close(); err != nil {
 		return fmt.Errorf("close encoder: %w", err)
 	}
