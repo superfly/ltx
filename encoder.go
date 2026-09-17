@@ -191,7 +191,7 @@ func (enc *Encoder) Close() (err error) {
 	}
 
 	// If we are encoding a deletion LTX file then ensure that we have an empty checksum.
-	if enc.header.Commit == 0 && enc.trailer.PostApplyChecksum != ChecksumFlag {
+	if !enc.header.NoChecksum() && enc.header.Commit == 0 && enc.trailer.PostApplyChecksum != ChecksumFlag {
 		return fmt.Errorf("post-apply checksum must be empty for zero-length database")
 	}
 

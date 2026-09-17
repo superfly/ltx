@@ -1,6 +1,7 @@
 package ltx_test
 
 import (
+	"bytes"
 	"io"
 	"math/rand"
 	"path/filepath"
@@ -92,6 +93,43 @@ func TestEncoder(t *testing.T) {
 		}
 	})
 
+	t.Run("CommitZeroNoChecksum", func(t *testing.T) {
+		var buf bytes.Buffer
+		enc, err := ltx.NewEncoder(&buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodeHeader(ltx.Header{
+			Version:   ltx.Version,
+			Flags:     ltx.HeaderFlagNoChecksum,
+			PageSize:  4096,
+			Commit:    0,
+			MinTXID:   5,
+			MaxTXID:   6,
+			Timestamp: 2000,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		enc.SetPostApplyChecksum(0)
+		if err := enc.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		dec := ltx.NewDecoder(&buf)
+		if err := dec.DecodeHeader(); err != nil {
+			t.Fatal(err)
+		}
+		var pageHeader ltx.PageHeader
+		pageData := make([]byte, 4096)
+		if err := dec.DecodePage(&pageHeader, pageData); err != io.EOF {
+			t.Fatalf("expected EOF, got %v", err)
+		}
+		if err := dec.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
 	// Ensure encoder has an empty post-apply checksum when encoding a deletion file.
 	t.Run("ErrInvalidCommitZeroPostApplyChecksum", func(t *testing.T) {
 		enc, err := ltx.NewEncoder(createFile(t, filepath.Join(t.TempDir(), "ltx")))
@@ -104,6 +142,22 @@ func TestEncoder(t *testing.T) {
 
 		enc.SetPostApplyChecksum(ltx.ChecksumFlag | 1)
 		if err := enc.Close(); err == nil || err.Error() != `post-apply checksum must be empty for zero-length database` {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+
+	// Ensure encoder rejects non-zero post-apply checksum on deletion file with HeaderFlagNoChecksum.
+	t.Run("ErrInvalidCommitZeroNoChecksumPostApplyChecksum", func(t *testing.T) {
+		enc, err := ltx.NewEncoder(createFile(t, filepath.Join(t.TempDir(), "ltx")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := enc.EncodeHeader(ltx.Header{Version: ltx.Version, Flags: ltx.HeaderFlagNoChecksum, PageSize: 4096, Commit: 0, MinTXID: 5, MaxTXID: 6, Timestamp: 2000}); err != nil {
+			t.Fatal(err)
+		}
+
+		enc.SetPostApplyChecksum(ltx.ChecksumFlag)
+		if err := enc.Close(); err == nil || err.Error() != `validate trailer: post-apply checksum not allowed` {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
