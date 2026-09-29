@@ -327,6 +327,31 @@ func TestCompactor_Compact(t *testing.T) {
 		}
 	})
 
+	t.Run("ErrContextCanceled", func(t *testing.T) {
+		var buf bytes.Buffer
+		writeFileSpec(t, &buf, &ltx.FileSpec{
+			Header: ltx.Header{Version: ltx.Version, PageSize: 1024, Commit: 3, MinTXID: 1, MaxTXID: 1, Timestamp: 1000},
+			Pages: []ltx.PageSpec{
+				{Header: ltx.PageHeader{Pgno: 1}, Data: bytes.Repeat([]byte{0x81}, 1024)},
+				{Header: ltx.PageHeader{Pgno: 2}, Data: bytes.Repeat([]byte{0x82}, 1024)},
+				{Header: ltx.PageHeader{Pgno: 3}, Data: bytes.Repeat([]byte{0x83}, 1024)},
+			},
+			Trailer: ltx.Trailer{PostApplyChecksum: 0x8a249272ad9f7dea},
+		})
+
+		var output bytes.Buffer
+		c, err := ltx.NewCompactor(&output, []io.Reader{&buf})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if err := c.Compact(ctx); !errors.Is(err, context.Canceled) {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
 	t.Run("Status", func(t *testing.T) {
 		bufs := make([]bytes.Buffer, 2)
 		writeFileSpec(t, &bufs[0], &ltx.FileSpec{

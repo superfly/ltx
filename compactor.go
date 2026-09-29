@@ -180,6 +180,11 @@ func (c *Compactor) writePageBlock(ctx context.Context) error {
 
 	// Iterate over readers and merge together.
 	for {
+		// Stop early if the caller canceled the compaction.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		// Read next page frame for each buffer.
 		pgno, err := c.fillPageBuffers(ctx)
 		if err != nil {
